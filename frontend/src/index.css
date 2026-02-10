@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Roboto Mono", "JetBrains Mono", monospace;
+
+  --color-tv-base: #131722;
+  --color-tv-panel: #1e222d;
+  --color-tv-border: #2a2e39;
+  --color-tv-text: #d1d4dc;
+  --color-tv-muted: #787b86;
+  --color-tv-blue: #2962ff;
+  --color-tv-green: #089981;
+  --color-tv-red: #f23645;
+  --color-tv-hover: #2a2e39;
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #131722; }
+::-webkit-scrollbar-thumb { background: #363a45; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #50535e; }
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background-color: #131722;
+  color: #d1d4dc;
+}

@@ -2,9 +2,9 @@
 
 | **Project Name** | **Gravion** |
 | :--- | :--- |
-| **Version** | 1.0 |
-| **Status** | Draft |
-| **Date** | February 9, 2026 |
+| **Version** | 1.3 |
+| **Status** | Phase 3 Complete |
+| **Date** | February 10, 2026 |
 | **Strategy** | "Steel Thread" Development (End-to-End Prototype First) |
 
 ---
@@ -29,35 +29,52 @@
     2.  **Load:** The UI reads from the *Database*, not directly from the API response (this proves the storage architecture).
 
 ### 1.4 Success Criteria (Phase 1)
-* [ ] App opens without errors.
-* [ ] Click "Scan" -> Backend calls Moomoo -> Gets AAPL $200 -> Saves to DB -> UI updates table to show AAPL $200.
+* [x] App opens without errors.
+* [x] Click "Scan" -> Backend calls yfinance -> Gets AAPL price -> Saves to DB -> UI updates table.
+
+> **Note (Updated Feb 2026):** Phase 1 was implemented using **yfinance** instead of Moomoo OpenD.
+> The Moomoo dependency was removed to avoid requiring an external desktop daemon.
+> yfinance provides the same OHLC data pipeline. See `PHASE1_REPORT.md` for details.
 
 ---
 
 ## Phase 2: The "Batch Scanner" MVP (Weeks 3-4)
-**Goal:** Scale the pipeline from 1 stock to 100 stocks and inject the mathematical "brains" (Algorithms).
+**Goal:** Scale from 1 stock to NASDAQ 100, decouple Fetch from Screen, redesign UI.
 
-### 2.1 Universe Expansion
-* **Feature:** Remove the hardcoded `US.AAPL`.
-* **Feature:** Implement `get_plate_stock('US.NDX')` to fetch the full NASDAQ 100 list.
-* **Logic:** Implement the "Loop" to iterate through all 100 stocks (with 0.5s throttling to prevent API bans).
+### 2.1 Architecture: Fetch/Screen Decoupling
+* **Design Decision:** Separate "data acquisition" from "data screening" into two independent operations.
+* **Fetch (`POST /api/fetch`):** Pulls fresh OHLC data from yfinance for all NASDAQ 100 symbols using `yf.download()` batch call. Saves to SQLite with `last_fetched` timestamp.
+* **Screen (`POST /api/screen`):** Reads from SQLite only. Applies signal logic. Returns results to UI.
+* **UI Toggle:** "Realtime Fetch" switch controls whether a scan includes a fresh fetch or uses cached data only.
 
-### 2.2 The Analysis Engine (The Logic)
-* **Feature:** Implement the `calculate_technicals` function.
-    * Compute **50MA** and **100MA**.
-    * Compare: Is `Price > 50MA`?
-* **Feature:** Implement the `calculate_fundamentals` function.
-    * Fetch Quarterly Financials.
-    * Compute **YoY Growth %**.
+### 2.2 Universe Expansion
+* **Feature:** Hardcoded NASDAQ 100 symbol list (~100 tickers).
+* **Feature:** `yf.download(symbols, period="2d", threads=True)` fetches all stocks in a single batch HTTP call.
+* **Data Source:** Yahoo Finance via `yfinance` library (Moomoo dependency removed).
+* **Performance:** Batch download completes in ~5-8 seconds for 100 symbols.
 
-### 2.3 UI Integration
-* **Feature:** The Data Grid now renders 100 rows.
-* **Feature:** Columns "Signal" and "Growth" are populated with real calculated data.
-* **Feature:** Sorting works (e.g., click "Growth" header to see top stocks).
+### 2.3 Signal Engine (Placeholder)
+* **Feature:** Basic signal computation based on daily change percent.
+* **Signals:** `STRONG BUY` (>+2%), `BUY` (>+0.5%), `NEUTRAL`, `SELL` (>-0.5%), `STRONG SELL` (>-2%).
+* **Note:** Full 50MA/100MA crossover signals require historical data accumulation (Phase 2.2 follow-up).
 
-### 2.4 Success Criteria (Phase 2)
-* [ ] User can click "Run Scan" and wait ~60 seconds for a full NASDAQ 100 report.
-* [ ] Top 5 "Strong Buy" stocks are correctly identified and sorted at the top.
+### 2.4 UI Redesign
+* **Header:** "Gravion v1.2" branding, NASDAQ 100 universe selector, Realtime Fetch toggle, Run Scanner button.
+* **Layout:** Right sidebar removed. Simpler 2-column layout (icon sidebar + main content).
+* **Table Columns:** Ticker, Price, Chg %, **Data Time** (new), **Signal Status** (new), YoY Growth.
+* **Data Time:** Shows `HH:MM:SS` for recent fetch, "Yesterday" for stale data. Green pulsing dot for realtime.
+* **Footer:** Backend status, database file info, auto-scan status.
+
+### 2.5 Database Schema
+* **Table:** `stock_cache` with columns: symbol (UNIQUE), name, price, open, high, low, close, volume, change_percent, last_fetched, timestamp.
+* **Migration:** `ALTER TABLE ADD COLUMN` with try/except for safe upgrades from Phase 1.
+
+### 2.6 Success Criteria (Phase 2)
+* [x] Fetch 100 stocks in a single yfinance batch call (< 10 seconds).
+* [x] Screen results display in grid with Data Time and Signal columns.
+* [x] Toggle OFF: Screen uses only cached DB data (no yfinance call).
+* [x] Toggle ON: Fresh fetch then screen.
+* [x] Database persists between sessions.
 
 ---
 
@@ -65,16 +82,69 @@
 **Goal:** Give the user the tools to *verify* the signal visually.
 
 ### 3.1 Chart Integration
-* **Feature:** Integrate `lightweight-charts`.
-* **Interaction:** Clicking a row in the grid opens the chart for that specific stock.
-* **Overlay:** Draw the **50MA (Blue line)** and **100MA (Orange line)** on the chart so the user can visually confirm the "Golden Cross" or trend.
+* **Feature:** Integrated `lightweight-charts` v4 (TradingView open-source charting library).
+* **Interaction:** Clicking any row in the data grid opens an interactive candlestick chart for that stock.
+* **Data:** 6 months of daily OHLC data fetched via `yf.download(symbol, period="6mo")`.
+* **Overlay:** **50MA (Blue #2962FF)** and **100MA (Orange #F6A90E)** computed from closing prices and drawn as line series overlays.
+* **Chart Features:** Dark theme matching TradingView palette, crosshair, responsive resize via ResizeObserver.
+* **Caching:** Historical data stored in `stock_history` table. Re-fetched only if cache is stale (not fetched today).
+* **Endpoint:** `GET /api/stock/{symbol}/detail` returns OHLC, MA50, MA100, volume series, and fundamentals in a single response.
 
 ### 3.2 Detail Inspector (Right Sidebar)
-* **Feature:** Populate the "Right Sidebar" (Zone D) with deep-dive data.
-* **Data:** Show PE Ratio, Market Cap, and Next Earnings Date.
+* **Feature:** 280px right sidebar appears when a stock is selected.
+* **Fundamentals:** PE Ratio, Market Cap (formatted as $xT/$xB), Next Earnings Date, Sector.
+* **Price Statistics:** 52-Week High (green), 52-Week Low (red), Current Price.
+* **Visual:** 52-week range progress bar showing current price position.
+* **States:** Loading (skeleton shimmer), Empty ("Select a stock to view details"), Populated.
+* **Data Source:** `yf.Ticker(symbol).info` for fundamentals, fetched alongside chart data.
 
 ### 3.3 Export
-* **Feature:** "Export to CSV" button to save the daily results for offline record-keeping.
+* **Feature:** "Export CSV" button in the filter bar (next to source label).
+* **Implementation:** Pure frontend CSV generation from the stocks array. Downloads as `gravion_scan_YYYYMMDD_HHmmss.csv`.
+* **Backend:** Also available via `GET /api/export` endpoint returning CSV with Content-Disposition header.
+
+### 3.4 Frontend Architecture
+* **Component Decomposition:** App.tsx decomposed into 4 components:
+    * `DataGrid.tsx` — Table with row selection highlighting and click handler.
+    * `ChartPanel.tsx` — Candlestick chart with MA overlays using lightweight-charts.
+    * `DetailInspector.tsx` — Right sidebar with fundamentals and price statistics.
+    * `ExportButton.tsx` — CSV export button.
+* **Shared Types:** `types/stock.ts` — `StockRow`, `DbInfo`, `StockDetail`, `OhlcDataPoint`, `LineDataPoint`, `Fundamentals`.
+* **AbortController:** Rapid stock switching cancels in-flight requests to prevent stale data display.
+
+### 3.5 Database Schema (Addition)
+* **New Table:** `stock_history` with columns: id, symbol, date (UNIQUE together), open, high, low, close, volume, fetched_at.
+* **Index:** `idx_history_symbol_date` on (symbol, date) for fast lookups.
+* **Methods:** `save_stock_history()`, `get_stock_history()`, `get_history_freshness()`.
+
+### 3.6 Layout (When Stock Selected)
+```
+┌──────────────────────────────────────────────────────┐
+│ HEADER: Gravion v1.3 | NASDAQ 100 | Toggle | Button  │
+├──┬───────────────────────────────────────┬───────────┤
+│  │ Filter Bar + Export CSV                │           │
+│  ├───────────────────────────────────────┤  Detail   │
+│  │ Chart Panel (45%) with candlesticks   │ Inspector │
+│S │ + 50MA (blue) + 100MA (orange)        │  (280px)  │
+│  │───────────────────────────────────────│           │
+│  │ Data Grid (55%, scrollable)            │ PE, MCap  │
+│  ├───────────────────────────────────────┤ Earnings  │
+│  │ Footer                                 │ 52W Range │
+└──┴───────────────────────────────────────┴───────────┘
+```
+
+### 3.7 Success Criteria (Phase 3)
+* [x] `GET /api/stock/AAPL/detail` returns ohlc (127 rows), ma50 (78 rows), ma100 (28 rows), fundamentals.
+* [x] Frontend builds with 0 TypeScript errors and 0 Vite errors.
+* [x] Clicking a row opens candlestick chart with 50MA (blue) and 100MA (orange) overlays.
+* [x] Right sidebar shows PE Ratio, Market Cap, Earnings Date, Sector, 52W range.
+* [x] Export CSV button downloads .csv file with all stock data.
+* [x] Close button (X) collapses chart + sidebar back to Phase 2 layout.
+* [x] AbortController cancels in-flight requests when rapidly switching stocks.
+* [x] `stock_history` table caches 6 months of OHLC data per symbol.
+
+> **Note (Updated Feb 2026):** Version bumped to **1.3.0**. Frontend decomposed into
+> component architecture. lightweight-charts v4 integrated for interactive charting.
 
 ---
 

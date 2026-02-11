@@ -13,6 +13,7 @@
     "electron:build": "npm run build && tsc frontend/electron/main.ts --target es2015 --module commonjs && electron-builder"
   },
   "dependencies": {
+    "lightweight-charts": "^5.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

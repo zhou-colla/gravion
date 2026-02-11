@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { createChart, ColorType, CrosshairMode } from "lightweight-charts";
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries } from "lightweight-charts";
 import type { IChartApi } from "lightweight-charts";
 import type { StockDetail } from "../types/stock";
 
@@ -40,8 +40,8 @@ export default function ChartPanel({ detail, onClose }: ChartPanelProps) {
 
     chartRef.current = chart;
 
-    // Candlestick series
-    const candleSeries = chart.addCandlestickSeries({
+    // Candlestick series (v5 API: addSeries with series type)
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#089981",
       downColor: "#F23645",
       borderUpColor: "#089981",
@@ -53,7 +53,7 @@ export default function ChartPanel({ detail, onClose }: ChartPanelProps) {
 
     // 50MA line
     if (detail.ma50.length > 0) {
-      const ma50Series = chart.addLineSeries({
+      const ma50Series = chart.addSeries(LineSeries, {
         color: "#2962FF",
         lineWidth: 2,
         priceLineVisible: false,
@@ -64,7 +64,7 @@ export default function ChartPanel({ detail, onClose }: ChartPanelProps) {
 
     // 100MA line
     if (detail.ma100.length > 0) {
-      const ma100Series = chart.addLineSeries({
+      const ma100Series = chart.addSeries(LineSeries, {
         color: "#F6A90E",
         lineWidth: 2,
         priceLineVisible: false,

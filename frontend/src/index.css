@@ -13,6 +13,7 @@
   --color-tv-green: #089981;
   --color-tv-red: #f23645;
   --color-tv-hover: #2a2e39;
+  --color-tv-orange: #F6A90E;
 }
 
 /* Thin scrollbar */
@@ -20,6 +21,15 @@
 ::-webkit-scrollbar-track { background: #131722; }
 ::-webkit-scrollbar-thumb { background: #363a45; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #50535e; }
+
+/* Toggle Switch */
+.toggle-checkbox:checked {
+  right: 0;
+  border-color: #2962ff;
+}
+.toggle-checkbox:checked + .toggle-label {
+  background-color: #2962ff;
+}
 
 body {
   margin: 0;

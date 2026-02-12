@@ -148,17 +148,41 @@
 
 ---
 
-## Phase 4: The "AI Agent" Evolution (Future)
-**Goal:** Transition from a "Tool" (Passive) to an "Agent" (Active).
+## Phase 4: The "Strategy Engine" (Weeks 7-8)
+**Goal:** Transition from fixed logic to a flexible strategy platform with professional-grade verification tools.
 
-### 4.1 Autonomous Scheduling
-* **Feature:** The Agent runs automatically at 9:00 AM EST (Pre-market) without user clicking "Run".
-* **Output:** Sends a desktop notification: *"Market Open: 3 New Buy Signals found for NVDA, AMD, MSFT."*
+### 4.1 Architecture: The "Plugin" Strategy System
+* **Concept:** Modular strategy loading.
+    * **Built-in:** Configured via UI (stored as JSON).
+    * **Custom:** Python scripts loaded from `user_strategies/` (for Quants).
+* **Backend:**
+    * `StrategyLoader` scans for `.py` files at startup.
+    * `BaseStrategy` class ensures all strategies follow the standard input/output format.
 
-### 4.2 Natural Language Query (Optional)
-* **Feature:** Add a search bar that accepts text: *"Show me stocks with > 50% growth above 50MA."*
-* **Tech:** LLM integration to translate text into SQL queries for the local database.
+### 4.2 UI: The Tabbed Inspector (Sidebar Upgrade)
+* **Feature:** **Split the Right Sidebar (Zone D) into Tabs.**
+    * **Tab A: Fundamentals:** (Existing) Shows PE, Market Cap, Sector, 52W Range.
+    * **Tab B: Backtester:** (New) Dedicated view for strategy simulation results.
 
-### 4.3 Paper Trading (Execution)
-* **Feature:** Connect the "Buy" signal to Moomoo's **Paper Trading** environment.
-* **Action:** Agent places limit orders automatically for high-confidence setups.
+### 4.3 The Backtest Engine & Transaction Log
+* **Interaction:** User selects a strategy and clicks "Run Backtest" (Play Icon) in the Chart Header.
+* **Output (Displayed in "Backtester" Tab):**
+    1.  **Performance Summary (Top Card):**
+        * **Total Return %** (Green/Red).
+        * **Win Rate %**.
+        * **Profit Factor** (Gross Win / Gross Loss).
+        * **Max Drawdown**.
+    2.  **Transaction Log (Trade Ledger):**
+        * A scrollable, chronological list of every simulated trade.
+        * **Columns:** Date, Type (Buy/Sell), Price, Shares, PnL (Profit/Loss).
+        * **Interaction:** Clicking a row in the log highlights that specific candle on the main Chart.
+
+### 4.4 For Light Users: The Visual Builder
+* **Feature:** **"No-Code" Strategy Editor**.
+* **UI:** Modal with "Condition Blocks" (e.g., `[RSI] < [30]`).
+* **Output:** Saves as JSON.
+
+### 4.5 For Quant Users: The Python Sandbox
+* **Feature:** **"Code-First" Development**.
+* **Workflow:** Drop a `.py` file into `gravion/strategies/`. The app auto-loads it.
+* **Power:** Full access to `pandas`, `numpy`, and `talib` for complex logic.

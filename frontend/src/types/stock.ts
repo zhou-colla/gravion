@@ -52,3 +52,42 @@ export interface StockDetail {
   volume: LineDataPoint[];
   fundamentals: Fundamentals;
 }
+
+export interface StrategyInfo {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  builtin: boolean;
+}
+
+export interface TradeEntry {
+  date: string;
+  type: "BUY" | "SELL";
+  price: number;
+  shares: number;
+  pnl: number;
+}
+
+export interface BacktestResultData {
+  strategy_name: string;
+  symbol: string;
+  total_return_pct: number;
+  win_rate_pct: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  trades: TradeEntry[];
+}
+
+export interface StrategyCondition {
+  indicator: string;
+  period: number;
+  comparator: string;
+  value: number;
+}
+
+export interface JsonStrategyDefinition {
+  name: string;
+  description: string;
+  buy_conditions: StrategyCondition[];
+  sell_conditions: StrategyCondition[];
+}

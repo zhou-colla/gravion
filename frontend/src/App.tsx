@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import type { StockRow, DbInfo, StockDetail } from "./types/stock";
+import type { StockRow, DbInfo, StockDetail, StrategyInfo, BacktestResultData, TradeEntry, JsonStrategyDefinition } from "./types/stock";
 import DataGrid from "./components/DataGrid";
 import ChartPanel from "./components/ChartPanel";
 import DetailInspector from "./components/DetailInspector";
 import ExportButton from "./components/ExportButton";
+import VisualBuilder from "./components/VisualBuilder";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(0) + "MB";
@@ -26,6 +27,15 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Phase 4 state
+  const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
+  const [selectedStrategy, setSelectedStrategy] = useState("");
+  const [backtestResult, setBacktestResult] = useState<BacktestResultData | null>(null);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [highlightedTrade, setHighlightedTrade] = useState<TradeEntry | null>(null);
+  const [showVisualBuilder, setShowVisualBuilder] = useState(false);
+  const backtestAbortRef = useRef<AbortController | null>(null);
+
   const checkHealth = async () => {
     try {
       const res = await fetch("http://localhost:8000/api/health");
@@ -41,6 +51,16 @@ export default function App() {
       const res = await fetch("http://localhost:8000/api/db-info");
       const json = await res.json();
       if (json.success) setDbInfo(json);
+    } catch {
+      /* silent */
+    }
+  };
+
+  const loadStrategies = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/strategies");
+      const json = await res.json();
+      if (json.strategies) setStrategies(json.strategies);
     } catch {
       /* silent */
     }
@@ -88,15 +108,76 @@ export default function App() {
     loadDbInfo();
   };
 
+  const runBacktest = async () => {
+    if (!selectedSymbol || !selectedStrategy) return;
+
+    // Cancel any in-flight backtest
+    if (backtestAbortRef.current) backtestAbortRef.current.abort();
+    const controller = new AbortController();
+    backtestAbortRef.current = controller;
+
+    setBacktestLoading(true);
+    setBacktestResult(null);
+    setHighlightedTrade(null);
+
+    try {
+      const res = await fetch(`http://localhost:8000/api/backtest/${selectedSymbol}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy_name: selectedStrategy }),
+        signal: controller.signal,
+      });
+      const json = await res.json();
+      if (!controller.signal.aborted && json.success) {
+        setBacktestResult(json.result);
+      }
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        console.error("Backtest failed:", e);
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setBacktestLoading(false);
+      }
+    }
+  };
+
+  const saveVisualStrategy = async (definition: JsonStrategyDefinition) => {
+    try {
+      const res = await fetch("http://localhost:8000/api/strategies/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ definition }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShowVisualBuilder(false);
+        await loadStrategies();
+        setSelectedStrategy(json.name);
+      }
+    } catch (e) {
+      console.error("Failed to save strategy:", e);
+    }
+  };
+
+  const handleTradeClick = (trade: TradeEntry) => {
+    setHighlightedTrade(trade);
+  };
+
   const loadStockDetail = async (symbol: string) => {
     // Cancel any in-flight request
     if (abortRef.current) abortRef.current.abort();
+    if (backtestAbortRef.current) backtestAbortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     setSelectedSymbol(symbol);
     setDetailLoading(true);
     setStockDetail(null);
+    // Clear backtest state on stock change
+    setBacktestResult(null);
+    setHighlightedTrade(null);
+    setBacktestLoading(false);
 
     try {
       const res = await fetch(`http://localhost:8000/api/stock/${symbol}/detail`, {
@@ -119,14 +200,19 @@ export default function App() {
 
   const closeDetail = () => {
     if (abortRef.current) abortRef.current.abort();
+    if (backtestAbortRef.current) backtestAbortRef.current.abort();
     setSelectedSymbol(null);
     setStockDetail(null);
     setDetailLoading(false);
+    setBacktestResult(null);
+    setHighlightedTrade(null);
+    setBacktestLoading(false);
   };
 
   useEffect(() => {
     checkHealth();
     loadDbInfo();
+    loadStrategies();
   }, []);
 
   const isBusy = loading || fetching;
@@ -139,7 +225,7 @@ export default function App() {
         <div className="flex items-center h-full space-x-4">
           <div className="font-bold text-lg tracking-tight text-white">
             Gravion{" "}
-            <span className="text-xs text-tv-blue font-normal ml-1">v1.3</span>
+            <span className="text-xs text-tv-blue font-normal ml-1">v1.4</span>
           </div>
           <div className="h-6 w-px bg-tv-border" />
           <div className="flex items-center bg-tv-panel hover:bg-tv-hover cursor-pointer px-3 py-1.5 rounded transition border border-transparent hover:border-tv-border">
@@ -215,6 +301,16 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </button>
+          {/* Visual Builder Button */}
+          <button
+            onClick={() => setShowVisualBuilder(true)}
+            className="p-2 text-tv-muted hover:text-tv-text hover:bg-tv-panel rounded transition cursor-pointer"
+            title="Visual Strategy Builder"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+            </svg>
+          </button>
         </aside>
 
         {/* ─── MAIN CONTENT ─── */}
@@ -247,7 +343,16 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Chart Panel (only visible when a stock is selected) */}
             {showDetail && stockDetail && !detailLoading && (
-              <ChartPanel detail={stockDetail} onClose={closeDetail} />
+              <ChartPanel
+                detail={stockDetail}
+                onClose={closeDetail}
+                strategies={strategies}
+                selectedStrategy={selectedStrategy}
+                onStrategyChange={setSelectedStrategy}
+                onRunBacktest={runBacktest}
+                backtestLoading={backtestLoading}
+                highlightedTrade={highlightedTrade}
+              />
             )}
 
             {/* Loading state for chart */}
@@ -328,15 +433,26 @@ export default function App() {
           </footer>
         </main>
 
-        {/* ─── RIGHT DETAIL INSPECTOR (Phase 3) ─── */}
+        {/* ─── RIGHT DETAIL INSPECTOR ─── */}
         {showDetail && (
           <DetailInspector
             detail={stockDetail}
             loading={detailLoading}
             onClose={closeDetail}
+            backtestResult={backtestResult}
+            backtestLoading={backtestLoading}
+            onTradeClick={handleTradeClick}
           />
         )}
       </div>
+
+      {/* ─── VISUAL BUILDER MODAL ─── */}
+      {showVisualBuilder && (
+        <VisualBuilder
+          onSave={saveVisualStrategy}
+          onClose={() => setShowVisualBuilder(false)}
+        />
+      )}
     </div>
   );
 }

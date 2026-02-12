@@ -24,6 +24,13 @@ class StrategyLoader:
     def get(self, name: str) -> BaseStrategy | None:
         return self._strategies.get(name)
 
+    def remove(self, name: str) -> bool:
+        """Remove a strategy by name. Returns True if removed, False if not found."""
+        if name in self._strategies:
+            del self._strategies[name]
+            return True
+        return False
+
     def list_all(self) -> list[dict]:
         result = []
         builtin_names = {"Golden Cross", "RSI Mean Reversion", "Price Change Momentum"}

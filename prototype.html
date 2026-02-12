@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <title>Gravion - Phase 2 Scanner</title>
+    <title>Gravion - Phase 1 Steel Thread Prototype</title>
     <script>
         tailwind.config = {
             theme: {
@@ -46,6 +46,20 @@
         .toggle-checkbox:checked + .toggle-label {
             background-color: #2962ff;
         }
+
+        /* Chart Grid Lines */
+        .chart-grid {
+            background-image: linear-gradient(to right, rgba(42, 46, 57, 0.3) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(42, 46, 57, 0.3) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* Signal Badge Animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .signal-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
 <body class="bg-tv-base text-tv-text font-sans h-screen flex flex-col overflow-hidden text-sm">
@@ -53,7 +67,7 @@
     <header class="h-14 bg-tv-base border-b border-tv-border flex items-center px-4 select-none justify-between">
         
         <div class="flex items-center h-full space-x-4">
-            <div class="font-bold text-lg tracking-tight text-white">Gravion <span class="text-xs text-tv-blue font-normal ml-1">v1.2</span></div>
+            <div class="font-bold text-lg tracking-tight text-white">Gravion <span class="text-xs text-tv-blue font-normal ml-1">v1.3</span></div>
             <div class="h-6 w-px bg-tv-border"></div>
             
             <div class="flex items-center bg-tv-panel hover:bg-tv-hover cursor-pointer px-3 py-1.5 rounded transition border border-transparent hover:border-tv-border">
@@ -84,85 +98,189 @@
         
         <aside class="w-12 border-r border-tv-border flex flex-col items-center py-4 space-y-4 bg-tv-base z-10">
             <button class="p-2 text-tv-blue bg-tv-panel rounded"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg></button>
-            <button class="p-2 text-tv-muted hover:text-tv-text hover:bg-tv-panel rounded"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg></button>
+            <button class="p-2 text-tv-muted hover:text-tv-text hover:bg-tv-panel rounded transition"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg></button>
         </aside>
 
-        <main class="flex-1 flex flex-col bg-tv-base relative">
+        <main class="flex-1 flex flex-col bg-tv-base relative min-w-0">
             
-            <div class="h-10 border-b border-tv-border flex items-center px-4 space-x-4 bg-tv-base text-xs">
-                <span class="text-tv-text font-bold">Results: 12</span>
+            <div class="h-10 border-b border-tv-border flex items-center px-4 space-x-4 bg-tv-base text-xs shrink-0">
+                <span class="text-tv-text font-bold">Results: 104</span>
                 <div class="h-4 w-px bg-tv-border"></div>
                 <div class="flex space-x-2">
-                    <span class="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">Price > 50MA</span>
-                    <span class="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">50MA > 100MA</span>
+                    <span class="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">Price &gt; 50MA</span>
+                    <span class="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">50MA &gt; 100MA</span>
                 </div>
-                <div class="ml-auto flex items-center text-tv-muted">
+                <div class="ml-auto flex items-center space-x-4 text-tv-muted">
+                    <button class="text-tv-blue hover:text-blue-400 text-xs font-medium transition flex items-center">
+                        <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Export CSV
+                    </button>
+                    <div class="h-4 w-px bg-tv-border"></div>
                     <span>Source: <span class="text-tv-text font-medium">Yahoo Finance (yfinance)</span></span>
                 </div>
             </div>
 
-            <div class="flex-1 overflow-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead class="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
-                        <tr class="border-b border-tv-border">
-                            <th class="px-4 py-2 w-32 border-r border-tv-border/30">Ticker</th>
-                            <th class="px-4 py-2 w-24 text-right border-r border-tv-border/30">Price</th>
-                            <th class="px-4 py-2 w-24 text-right border-r border-tv-border/30">Chg %</th>
-                            
-                            <th class="px-4 py-2 w-32 text-right border-r border-tv-border/30 text-tv-blue">Data Time</th>
-                            
-                            <th class="px-4 py-2 border-r border-tv-border/30">Signal Status</th>
-                            <th class="px-4 py-2 text-right">YoY Growth</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-tv-text divide-y divide-tv-border font-medium">
-                        
-                        <tr class="hover:bg-tv-panel transition group cursor-pointer">
-                            <td class="px-4 py-2.5 flex items-center">
-                                <div class="w-1.5 h-1.5 rounded-full bg-tv-green mr-2 animate-pulse"></div>
-                                <span class="font-bold text-tv-blue">NVDA</span>
-                            </td>
-                            <td class="px-4 py-2.5 text-right text-tv-green">$880.50</td>
-                            <td class="px-4 py-2.5 text-right text-tv-green">+2.45%</td>
-                            
-                            <td class="px-4 py-2.5 text-right font-mono text-xs text-tv-text">10:45:02</td>
-                            
-                            <td class="px-4 py-2.5">
-                                <span class="bg-tv-green/10 text-tv-green text-xs px-1.5 py-0.5 rounded border border-tv-green/30">STRONG BUY</span>
-                            </td>
-                            <td class="px-4 py-2.5 text-right font-mono text-tv-green">+125.4%</td>
-                        </tr>
+            <div class="flex-1 flex flex-col overflow-hidden">
+                
+                <div class="border-b border-tv-border h-[45%] bg-tv-base flex items-center justify-center">
+                    <div class="w-full h-full relative chart-grid">
+                        <div class="absolute top-2 left-4 flex items-center">
+                            <span class="text-sm font-bold text-tv-text">AAPL</span>
+                            <span class="text-xs text-tv-muted ml-2">Apple Inc.</span>
+                            <span class="ml-4 text-sm font-medium text-tv-green">$274.62</span>
+                            <span class="ml-2 text-xs text-tv-green">+0.5%</span>
+                        </div>
+                        <div class="absolute top-2 right-4 flex items-center space-x-4">
+                            <div class="flex items-center space-x-1">
+                                <div class="w-2 h-2 rounded-full bg-tv-blue"></div>
+                                <span class="text-xs text-tv-muted">Price</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <div class="w-2 h-2 rounded-full bg-tv-green"></div>
+                                <span class="text-xs text-tv-muted">50MA</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <div class="w-2 h-2 rounded-full bg-tv-red"></div>
+                                <span class="text-xs text-tv-muted">100MA</span>
+                            </div>
+                            <button class="text-tv-muted hover:text-tv-text transition">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="absolute bottom-2 left-4 text-xs text-tv-muted">
+                            6M OHLC
+                        </div>
+                    </div>
+                </div>
 
-                        <tr class="hover:bg-tv-panel transition group cursor-pointer">
-                            <td class="px-4 py-2.5 flex items-center">
-                                <div class="w-1.5 h-1.5 rounded-full bg-tv-muted mr-2"></div>
-                                <span class="font-bold">MSFT</span>
-                            </td>
-                            <td class="px-4 py-2.5 text-right text-tv-text">$405.10</td>
-                            <td class="px-4 py-2.5 text-right text-tv-red">-0.12%</td>
+                <div class="flex-1 overflow-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
+                            <tr class="border-b border-tv-border">
+                                <th class="px-4 py-2 w-32 border-r border-tv-border/30">Ticker</th>
+                                <th class="px-4 py-2 w-24 text-right border-r border-tv-border/30">Price</th>
+                                <th class="px-4 py-2 w-24 text-right border-r border-tv-border/30">Chg %</th>
+                                <th class="px-4 py-2 w-32 text-right border-r border-tv-border/30">Data Time</th>
+                                <th class="px-4 py-2 border-r border-tv-border/30">Signal Status</th>
+                                <th class="px-4 py-2 text-right">Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-tv-text divide-y divide-tv-border font-medium">
                             
-                            <td class="px-4 py-2.5 text-right font-mono text-xs text-tv-muted">Yesterday</td>
-                            
-                            <td class="px-4 py-2.5">
-                                <span class="bg-tv-blue/10 text-tv-blue text-xs px-1.5 py-0.5 rounded border border-tv-blue/30">UPTREND</span>
-                            </td>
-                            <td class="px-4 py-2.5 text-right font-mono text-tv-green">+18.2%</td>
-                        </tr>
+                            <tr class="hover:bg-tv-panel transition group cursor-pointer">
+                                <td class="px-4 py-2.5 flex items-center">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-tv-green mr-2 animate-pulse"></div>
+                                    <span class="font-bold text-tv-blue">AAPL</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right text-tv-green">$274.62</td>
+                                <td class="px-4 py-2.5 text-right text-tv-green">+0.5%</td>
+                                <td class="px-4 py-2.5 text-right font-mono text-xs text-tv-text">10:45:02</td>
+                                <td class="px-4 py-2.5">
+                                    <span class="bg-tv-green/10 text-tv-green text-xs px-1.5 py-0.5 rounded border border-tv-green/30 signal-pulse">STRONG BUY</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right font-mono text-tv-text">44,562,300</td>
+                            </tr>
 
-                    </tbody>
-                </table>
+                            <tr class="hover:bg-tv-panel transition group cursor-pointer">
+                                <td class="px-4 py-2.5 flex items-center">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-tv-green mr-2"></div>
+                                    <span class="font-bold">MSFT</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right text-tv-green">$412.35</td>
+                                <td class="px-4 py-2.5 text-right text-tv-green">+0.3%</td>
+                                <td class="px-4 py-2.5 text-right font-mono text-xs text-tv-text">10:45:01</td>
+                                <td class="px-4 py-2.5">
+                                    <span class="bg-tv-green/10 text-tv-green text-xs px-1.5 py-0.5 rounded border border-tv-green/30">BUY</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right font-mono text-tv-text">22,145,600</td>
+                            </tr>
+
+                            <tr class="hover:bg-tv-panel transition group cursor-pointer">
+                                <td class="px-4 py-2.5 flex items-center">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-tv-red mr-2"></div>
+                                    <span class="font-bold">NVDA</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right text-tv-red">$1,045.23</td>
+                                <td class="px-4 py-2.5 text-right text-tv-red">-1.2%</td>
+                                <td class="px-4 py-2.5 text-right font-mono text-xs text-tv-text">10:45:00</td>
+                                <td class="px-4 py-2.5">
+                                    <span class="bg-tv-red/10 text-tv-red text-xs px-1.5 py-0.5 rounded border border-tv-red/30">SELL</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right font-mono text-tv-text">18,765,400</td>
+                            </tr>
+
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <footer class="h-8 border-t border-tv-border flex items-center px-4 bg-tv-panel text-xs text-tv-muted select-none justify-between">
+            <footer class="h-8 border-t border-tv-border flex items-center px-4 bg-tv-panel text-xs text-tv-muted select-none justify-between shrink-0">
                 <div class="flex items-center space-x-4">
                     <span class="flex items-center"><div class="w-2 h-2 rounded-full bg-tv-green mr-2"></div> Backend Online</span>
-                    <span>Database: <span class="text-tv-text">gravion.db</span> (24MB)</span>
+                    <span>Database: <span class="text-tv-text">gravion.db</span> (128KB)</span>
                 </div>
                 <div>
                     Next Auto-Scan: <span class="text-tv-text">Disabled</span>
                 </div>
             </footer>
         </main>
+
+        <aside class="w-64 border-l border-tv-border bg-tv-base flex flex-col">
+            <div class="h-10 border-b border-tv-border flex items-center px-4 justify-between">
+                <span class="text-xs font-medium text-tv-text">Stock Details</span>
+                <button class="text-tv-muted hover:text-tv-text">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-1 overflow-auto p-4 space-y-4">
+                <div>
+                    <h3 class="text-xs font-medium text-tv-muted mb-2">Fundamentals</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">P/E Ratio</span>
+                            <span class="text-xs text-tv-text font-medium">30.2</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">Market Cap</span>
+                            <span class="text-xs text-tv-text font-medium">$3.8T</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">Sector</span>
+                            <span class="text-xs text-tv-text font-medium">Technology</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">52W High</span>
+                            <span class="text-xs text-tv-text font-medium">$297.32</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">52W Low</span>
+                            <span class="text-xs text-tv-text font-medium">$172.63</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xs font-medium text-tv-muted mb-2">Key Metrics</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">Open</span>
+                            <span class="text-xs text-tv-text font-medium">$275.10</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">High</span>
+                            <span class="text-xs text-tv-text font-medium">$276.25</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">Low</span>
+                            <span class="text-xs text-tv-text font-medium">$273.80</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-xs text-tv-muted">Volume</span>
+                            <span class="text-xs text-tv-text font-medium">44.5M</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <script>

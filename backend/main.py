@@ -1,10 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 
 from db import stock_db
+from strategies.loader import strategy_loader
+from strategies.json_strategy import JsonStrategy
+from strategies.backtest_engine import run_backtest
 
-app = FastAPI(title="Gravion Backend", version="1.3.0")
+import os
+import pandas as pd
+
+app = FastAPI(title="Gravion Backend", version="1.4.0")
+
+# Scan user strategies directory at startup
+_user_dir = os.path.join(os.path.dirname(__file__), "strategies", "user")
+strategy_loader.scan_directory(_user_dir)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,7 +62,7 @@ def compute_signal(stock: dict) -> str:
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "service": "gravion-backend", "version": "1.3.0"}
+    return {"status": "ok", "service": "gravion-backend", "version": "1.4.0"}
 
 
 @app.post("/api/fetch")
@@ -315,6 +326,79 @@ async def export_csv():
         return {"success": False, "error": str(e)}
 
 
+class BacktestRequest(BaseModel):
+    strategy_name: str | None = None
+    strategy_json: dict | None = None
+
+
+class SaveStrategyRequest(BaseModel):
+    definition: dict
+
+
+@app.get("/api/strategies")
+async def list_strategies():
+    """Returns all registered strategies (built-in + user)."""
+    return {"strategies": strategy_loader.list_all()}
+
+
+@app.post("/api/backtest/{symbol}")
+async def backtest(symbol: str, body: BacktestRequest):
+    """Run a backtest for a strategy on a stock's historical data."""
+    try:
+        symbol = symbol.upper()
+
+        # Resolve strategy
+        if body.strategy_name:
+            strategy = strategy_loader.get(body.strategy_name)
+            if not strategy:
+                return {"success": False, "error": f"Strategy '{body.strategy_name}' not found"}
+        elif body.strategy_json:
+            strategy = JsonStrategy(body.strategy_json)
+        else:
+            return {"success": False, "error": "Provide strategy_name or strategy_json"}
+
+        # Get historical data
+        history = stock_db.get_stock_history(symbol)
+        if not history:
+            return {"success": False, "error": f"No historical data for {symbol}. Load the stock detail first."}
+
+        df = pd.DataFrame(history)
+
+        result = run_backtest(strategy, df)
+        result.symbol = symbol
+
+        return {
+            "success": True,
+            "result": {
+                "strategy_name": result.strategy_name,
+                "symbol": result.symbol,
+                "total_return_pct": result.total_return_pct,
+                "win_rate_pct": result.win_rate_pct,
+                "profit_factor": result.profit_factor,
+                "max_drawdown_pct": result.max_drawdown_pct,
+                "trades": [
+                    {"date": t.date, "type": t.type, "price": t.price, "shares": t.shares, "pnl": t.pnl}
+                    for t in result.trades
+                ],
+            },
+        }
+
+    except Exception as e:
+        print(f"Backtest failed for {symbol}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/strategies/save")
+async def save_strategy(body: SaveStrategyRequest):
+    """Save a JSON-defined strategy and register it in the loader."""
+    try:
+        strat = JsonStrategy(body.definition)
+        strategy_loader.register(strat)
+        return {"success": True, "name": strat.name}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 if __name__ == "__main__":
-    print("Gravion Backend v1.3 Running on http://localhost:8000")
+    print("Gravion Backend v1.4 Running on http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)

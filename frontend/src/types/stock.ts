@@ -91,3 +91,61 @@ export interface JsonStrategyDefinition {
   buy_conditions: StrategyCondition[];
   sell_conditions: StrategyCondition[];
 }
+
+export interface BatchBacktestRequest {
+  symbols: string[];
+  strategy_name?: string;
+  strategy_json?: Record<string, unknown>;
+  start_date?: string;
+  end_date?: string;
+  period?: string;
+  initial_capital_per_stock?: number;
+}
+
+export interface BatchBacktestSummary {
+  portfolio_return_pct: number;
+  avg_win_rate_pct: number;
+  total_trades: number;
+  best_ticker: string | null;
+  worst_ticker: string | null;
+}
+
+export interface BatchBacktestResult {
+  symbol: string;
+  total_return_pct: number;
+  win_rate_pct: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  trade_count: number;
+  trades: TradeEntry[];
+}
+
+export interface BatchBacktestResponse {
+  success: boolean;
+  summary: BatchBacktestSummary;
+  results: BatchBacktestResult[];
+  errors: { symbol: string; error: string }[];
+  date_range: { start: string; end: string };
+}
+
+export interface EquityCurvePoint {
+  time: string;
+  value: number;
+}
+
+export interface AppSettings {
+  data_source: "yahoo_finance" | "moomoo_opend";
+  global_start_date: string;
+  global_end_date: string;
+}
+
+export interface Portfolio {
+  id: number;
+  name: string;
+  is_system: boolean;
+  symbol_count: number;
+}
+
+export interface PortfolioDetail extends Portfolio {
+  symbols: string[];
+}

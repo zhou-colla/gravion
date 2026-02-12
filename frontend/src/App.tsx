@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-import type { StockRow, DbInfo, StockDetail, StrategyInfo, BacktestResultData, TradeEntry, JsonStrategyDefinition } from "./types/stock";
+import type { StockRow, DbInfo, StockDetail, StrategyInfo, BacktestResultData, TradeEntry, JsonStrategyDefinition, AppSettings, Portfolio } from "./types/stock";
 import DataGrid from "./components/DataGrid";
 import ChartPanel from "./components/ChartPanel";
 import DetailInspector from "./components/DetailInspector";
 import ExportButton from "./components/ExportButton";
 import VisualBuilder from "./components/VisualBuilder";
+import BacktestWorkspace from "./components/BacktestWorkspace";
+import SettingsPanel from "./components/SettingsPanel";
+import PortfolioManager from "./components/PortfolioManager";
+import SourceSelector from "./components/SourceSelector";
+import type { SourceSelection } from "./components/SourceSelector";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(0) + "MB";
@@ -36,6 +41,14 @@ export default function App() {
   const [showVisualBuilder, setShowVisualBuilder] = useState(false);
   const backtestAbortRef = useRef<AbortController | null>(null);
 
+  // View switching
+  const [activeView, setActiveView] = useState<"scanner" | "backtest" | "portfolios" | "settings">("scanner");
+
+  // Phase 5 state
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
+  const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
+
   const checkHealth = async () => {
     try {
       const res = await fetch("http://localhost:8000/api/health");
@@ -66,10 +79,58 @@ export default function App() {
     }
   };
 
+  const loadPortfolios = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/portfolios");
+      const json = await res.json();
+      if (json.portfolios) {
+        setPortfolios(json.portfolios);
+        // Set default scanner source to system portfolio if current is placeholder (id=0)
+        setScannerSource((prev) => {
+          if (prev.type === "portfolio" && prev.portfolioId === 0) {
+            const system = json.portfolios.find((p: Portfolio) => p.is_system);
+            if (system) return { type: "portfolio", portfolioId: system.id, portfolioName: system.name };
+          }
+          return prev;
+        });
+      }
+    } catch {
+      /* silent */
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/settings");
+      const json = await res.json();
+      setSettings({
+        data_source: json.data_source || "yahoo_finance",
+        global_start_date: json.global_start_date || "",
+        global_end_date: json.global_end_date || "",
+      });
+    } catch {
+      /* silent */
+    }
+  };
+
+  const getSourceBody = (): Record<string, unknown> | undefined => {
+    if (scannerSource.type === "portfolio" && scannerSource.portfolioId > 0) {
+      return { portfolio_id: scannerSource.portfolioId };
+    } else if (scannerSource.type === "manual" && scannerSource.symbols.length > 0) {
+      return { symbols: scannerSource.symbols };
+    }
+    return undefined;
+  };
+
   const fetchData = async () => {
     setFetching(true);
     try {
-      const res = await fetch("http://localhost:8000/api/fetch", { method: "POST" });
+      const body = getSourceBody();
+      const res = await fetch("http://localhost:8000/api/fetch", {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json;
@@ -82,7 +143,12 @@ export default function App() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:8000/api/screen", { method: "POST" });
+      const body = getSourceBody();
+      const res = await fetch("http://localhost:8000/api/screen", {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
       const json = await res.json();
       if (json.success && json.data) {
         setStocks(json.data);
@@ -213,6 +279,8 @@ export default function App() {
     checkHealth();
     loadDbInfo();
     loadStrategies();
+    loadPortfolios();
+    loadSettings();
   }, []);
 
   const isBusy = loading || fetching;
@@ -225,16 +293,14 @@ export default function App() {
         <div className="flex items-center h-full space-x-4">
           <div className="font-bold text-lg tracking-tight text-white">
             Gravion{" "}
-            <span className="text-xs text-tv-blue font-normal ml-1">v1.4</span>
+            <span className="text-xs text-tv-blue font-normal ml-1">v2.0</span>
           </div>
           <div className="h-6 w-px bg-tv-border" />
-          <div className="flex items-center bg-tv-panel hover:bg-tv-hover cursor-pointer px-3 py-1.5 rounded transition border border-transparent hover:border-tv-border">
-            <span className="mr-2 text-lg">🇺🇸</span>
-            <span className="font-bold mr-2">NASDAQ 100</span>
-            <svg className="w-3 h-3 text-tv-muted" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-            </svg>
-          </div>
+          <SourceSelector
+            portfolios={portfolios}
+            selectedSource={scannerSource}
+            onSourceChange={setScannerSource}
+          />
         </div>
 
         <div className="flex items-center space-x-6">
@@ -291,14 +357,53 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* ─── LEFT ICON SIDEBAR ─── */}
         <aside className="w-12 border-r border-tv-border flex flex-col items-center py-4 space-y-4 bg-tv-base z-10">
-          <button className="p-2 text-tv-blue bg-tv-panel rounded">
+          {/* Scanner */}
+          <button
+            onClick={() => setActiveView("scanner")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "scanner" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title="Scanner"
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </button>
-          <button className="p-2 text-tv-muted hover:text-tv-text hover:bg-tv-panel rounded transition">
+          {/* Backtest Workspace */}
+          <button
+            onClick={() => setActiveView("backtest")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "backtest" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title="Backtest Workspace"
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </button>
+          {/* Portfolios */}
+          <button
+            onClick={() => setActiveView("portfolios")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "portfolios" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title="Portfolios"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </button>
+          {/* Settings */}
+          <button
+            onClick={() => setActiveView("settings")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "settings" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title="Settings"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
           {/* Visual Builder Button */}
@@ -314,136 +419,158 @@ export default function App() {
         </aside>
 
         {/* ─── MAIN CONTENT ─── */}
-        <main className="flex-1 flex flex-col bg-tv-base relative min-w-0">
-          {/* Filter Bar */}
-          <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-4 bg-tv-base text-xs shrink-0">
-            <span className="text-tv-text font-bold">Results: {stocks.length}</span>
-            <div className="h-4 w-px bg-tv-border" />
-            {stocks.length > 0 && (
-              <div className="flex space-x-2">
-                <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
-                  Price &gt; 50MA
-                </span>
-                <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
-                  50MA &gt; 100MA
-                </span>
+        {activeView === "scanner" ? (
+          <>
+            <main className="flex-1 flex flex-col bg-tv-base relative min-w-0">
+              {/* Filter Bar */}
+              <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-4 bg-tv-base text-xs shrink-0">
+                <span className="text-tv-text font-bold">Results: {stocks.length}</span>
+                <div className="h-4 w-px bg-tv-border" />
+                {stocks.length > 0 && (
+                  <div className="flex space-x-2">
+                    <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
+                      Price &gt; 50MA
+                    </span>
+                    <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
+                      50MA &gt; 100MA
+                    </span>
+                  </div>
+                )}
+                {error && <span className="text-tv-red ml-2">{error}</span>}
+                <div className="ml-auto flex items-center space-x-4 text-tv-muted">
+                  <ExportButton stocks={stocks} disabled={isBusy} />
+                  <div className="h-4 w-px bg-tv-border" />
+                  <span>
+                    Source: <span className="text-tv-text font-medium">Yahoo Finance (yfinance)</span>
+                  </span>
+                </div>
               </div>
-            )}
-            {error && <span className="text-tv-red ml-2">{error}</span>}
-            <div className="ml-auto flex items-center space-x-4 text-tv-muted">
-              <ExportButton stocks={stocks} disabled={isBusy} />
-              <div className="h-4 w-px bg-tv-border" />
-              <span>
-                Source: <span className="text-tv-text font-medium">Yahoo Finance (yfinance)</span>
-              </span>
-            </div>
-          </div>
 
-          {/* Chart + Grid area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Chart Panel (only visible when a stock is selected) */}
-            {showDetail && stockDetail && !detailLoading && (
-              <ChartPanel
+              {/* Chart + Grid area */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Chart Panel (only visible when a stock is selected) */}
+                {showDetail && stockDetail && !detailLoading && (
+                  <ChartPanel
+                    detail={stockDetail}
+                    onClose={closeDetail}
+                    strategies={strategies}
+                    selectedStrategy={selectedStrategy}
+                    onStrategyChange={setSelectedStrategy}
+                    onRunBacktest={runBacktest}
+                    backtestLoading={backtestLoading}
+                    highlightedTrade={highlightedTrade}
+                  />
+                )}
+
+                {/* Loading state for chart */}
+                {showDetail && detailLoading && (
+                  <div className="border-b border-tv-border flex items-center justify-center" style={{ height: "45%" }}>
+                    <div className="text-center">
+                      <div className="inline-block w-6 h-6 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-2" />
+                      <p className="text-tv-muted text-xs">Loading chart for {selectedSymbol}...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Grid */}
+                <div className="flex-1 overflow-auto">
+                  {isBusy ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
+                        <p className="text-tv-muted">
+                          {fetching
+                            ? "Fetching NASDAQ 100 data from Yahoo Finance..."
+                            : "Screening cached data..."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : stocks.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-tv-panel rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-tv-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium mb-2 text-tv-text">No Scan Results</h3>
+                        <p className="text-tv-muted mb-1 text-xs">
+                          Enable <strong className="text-tv-text">Realtime Fetch</strong> and click{" "}
+                          <strong className="text-tv-blue">Fetch &amp; Run</strong> to download fresh data.
+                        </p>
+                        <p className="text-tv-muted mb-4 text-xs">
+                          Or click <strong className="text-tv-blue">Run Scanner</strong> to screen cached data.
+                        </p>
+                        <button
+                          onClick={runAction}
+                          className="bg-tv-blue hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium transition cursor-pointer"
+                        >
+                          {realtimeFetch ? "Fetch & Run" : "Run Scanner"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <DataGrid
+                      stocks={stocks}
+                      selectedSymbol={selectedSymbol}
+                      onSelectStock={loadStockDetail}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Status Bar */}
+              <footer className="h-8 border-t border-tv-border flex items-center px-4 bg-tv-panel text-xs text-tv-muted select-none justify-between shrink-0">
+                <div className="flex items-center space-x-4">
+                  <span className="flex items-center">
+                    <div
+                      className={`w-2 h-2 rounded-full mr-2 ${
+                        backendStatus === "connected" ? "bg-tv-green" : "bg-tv-red"
+                      }`}
+                    />
+                    {backendStatus === "connected" ? "Backend Online" : "Backend Offline"}
+                  </span>
+                  <span>
+                    Database: <span className="text-tv-text">{dbInfo.path}</span> ({formatBytes(dbInfo.size_bytes)})
+                  </span>
+                </div>
+                <div>
+                  Next Auto-Scan: <span className="text-tv-text">Disabled</span>
+                </div>
+              </footer>
+            </main>
+
+            {/* ─── RIGHT DETAIL INSPECTOR ─── */}
+            {showDetail && (
+              <DetailInspector
                 detail={stockDetail}
+                loading={detailLoading}
                 onClose={closeDetail}
-                strategies={strategies}
-                selectedStrategy={selectedStrategy}
-                onStrategyChange={setSelectedStrategy}
-                onRunBacktest={runBacktest}
+                backtestResult={backtestResult}
                 backtestLoading={backtestLoading}
-                highlightedTrade={highlightedTrade}
+                onTradeClick={handleTradeClick}
               />
             )}
-
-            {/* Loading state for chart */}
-            {showDetail && detailLoading && (
-              <div className="border-b border-tv-border flex items-center justify-center" style={{ height: "45%" }}>
-                <div className="text-center">
-                  <div className="inline-block w-6 h-6 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-2" />
-                  <p className="text-tv-muted text-xs">Loading chart for {selectedSymbol}...</p>
-                </div>
-              </div>
-            )}
-
-            {/* Data Grid */}
-            <div className="flex-1 overflow-auto">
-              {isBusy ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
-                    <p className="text-tv-muted">
-                      {fetching
-                        ? "Fetching NASDAQ 100 data from Yahoo Finance..."
-                        : "Screening cached data..."}
-                    </p>
-                  </div>
-                </div>
-              ) : stocks.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-tv-panel rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-tv-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-medium mb-2 text-tv-text">No Scan Results</h3>
-                    <p className="text-tv-muted mb-1 text-xs">
-                      Enable <strong className="text-tv-text">Realtime Fetch</strong> and click{" "}
-                      <strong className="text-tv-blue">Fetch &amp; Run</strong> to download fresh data.
-                    </p>
-                    <p className="text-tv-muted mb-4 text-xs">
-                      Or click <strong className="text-tv-blue">Run Scanner</strong> to screen cached data.
-                    </p>
-                    <button
-                      onClick={runAction}
-                      className="bg-tv-blue hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium transition cursor-pointer"
-                    >
-                      {realtimeFetch ? "Fetch & Run" : "Run Scanner"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <DataGrid
-                  stocks={stocks}
-                  selectedSymbol={selectedSymbol}
-                  onSelectStock={loadStockDetail}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Footer Status Bar */}
-          <footer className="h-8 border-t border-tv-border flex items-center px-4 bg-tv-panel text-xs text-tv-muted select-none justify-between shrink-0">
-            <div className="flex items-center space-x-4">
-              <span className="flex items-center">
-                <div
-                  className={`w-2 h-2 rounded-full mr-2 ${
-                    backendStatus === "connected" ? "bg-tv-green" : "bg-tv-red"
-                  }`}
-                />
-                {backendStatus === "connected" ? "Backend Online" : "Backend Offline"}
-              </span>
-              <span>
-                Database: <span className="text-tv-text">{dbInfo.path}</span> ({formatBytes(dbInfo.size_bytes)})
-              </span>
-            </div>
-            <div>
-              Next Auto-Scan: <span className="text-tv-text">Disabled</span>
-            </div>
-          </footer>
-        </main>
-
-        {/* ─── RIGHT DETAIL INSPECTOR ─── */}
-        {showDetail && (
-          <DetailInspector
-            detail={stockDetail}
-            loading={detailLoading}
-            onClose={closeDetail}
-            backtestResult={backtestResult}
-            backtestLoading={backtestLoading}
-            onTradeClick={handleTradeClick}
+          </>
+        ) : activeView === "backtest" ? (
+          <BacktestWorkspace
+            strategies={strategies}
+            availableSymbols={stocks.map((s) => s.symbol)}
+            onOpenVisualBuilder={() => setShowVisualBuilder(true)}
+            onStrategiesChanged={loadStrategies}
+            portfolios={portfolios}
           />
-        )}
+        ) : activeView === "portfolios" ? (
+          <PortfolioManager
+            portfolios={portfolios}
+            onPortfoliosChanged={loadPortfolios}
+          />
+        ) : activeView === "settings" ? (
+          <SettingsPanel
+            settings={settings}
+            onSettingsChanged={setSettings}
+          />
+        ) : null}
       </div>
 
       {/* ─── VISUAL BUILDER MODAL ─── */}

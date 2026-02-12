@@ -1,7 +1,7 @@
 {
   "name": "gravion",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Gravion - Desktop quantitative analysis terminal",
   "main": "index.js",
   "scripts": {

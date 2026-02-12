@@ -2,6 +2,24 @@ import sqlite3
 import os
 from datetime import datetime
 
+# fmt: off
+NASDAQ_100_SYMBOLS = [
+    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA",
+    "AVGO", "COST", "NFLX", "AMD", "ADBE", "PEP", "CSCO", "TMUS",
+    "LIN", "INTC", "INTU", "CMCSA", "AMGN", "TXN", "MU", "QCOM",
+    "ISRG", "HON", "AMAT", "BKNG", "LRCX", "VRTX", "REGN", "ADI",
+    "KLAC", "PANW", "ADP", "SBUX", "MDLZ", "SNPS", "GILD", "MELI",
+    "PYPL", "CDNS", "ASML", "CRWD", "CTAS", "MAR", "ABNB", "ORLY",
+    "CSX", "MRVL", "MNST", "NXPI", "FTNT", "PCAR", "WDAY", "CEG",
+    "DASH", "ROST", "DXCM", "ODFL", "ROP", "AEP", "CPRT", "FANG",
+    "KDP", "FAST", "PAYX", "IDXX", "CTSH", "EA", "KHC", "GEHC",
+    "BKR", "VRSK", "EXC", "LULU", "MCHP", "XEL", "ON", "CCEP",
+    "TTD", "TEAM", "CDW", "DDOG", "CSGP", "ANSS", "GFS", "BIIB",
+    "ZS", "ILMN", "WBD", "MRNA", "SIRI", "DLTR", "MDB", "SMCI",
+    "ARM", "COIN", "PDD", "JD",
+]
+# fmt: on
+
 
 class StockDatabase:
     def __init__(self, db_path=None):
@@ -62,6 +80,64 @@ class StockDatabase:
                 CREATE INDEX IF NOT EXISTS idx_history_symbol_date
                 ON stock_history(symbol, date)
             """)
+
+            # Phase 5: App settings
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at DATETIME
+                )
+            """)
+
+            # Phase 5: Portfolios
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portfolios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    is_system INTEGER DEFAULT 0,
+                    created_at DATETIME
+                )
+            """)
+
+            # Phase 5: Portfolio symbols
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_symbols (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    portfolio_id INTEGER NOT NULL,
+                    symbol TEXT NOT NULL,
+                    UNIQUE(portfolio_id, symbol),
+                    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+                )
+            """)
+
+            conn.commit()
+
+            # Seed default settings (idempotent)
+            for key, value in [
+                ("data_source", "yahoo_finance"),
+                ("global_start_date", ""),
+                ("global_end_date", ""),
+            ]:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, datetime.now().isoformat()),
+                )
+
+            # Seed NASDAQ 100 system portfolio (idempotent)
+            cursor.execute("SELECT id FROM portfolios WHERE name = 'NASDAQ 100'")
+            row = cursor.fetchone()
+            if row is None:
+                cursor.execute(
+                    "INSERT INTO portfolios (name, is_system, created_at) VALUES (?, 1, ?)",
+                    ("NASDAQ 100", datetime.now().isoformat()),
+                )
+                portfolio_id = cursor.lastrowid
+                cursor.executemany(
+                    "INSERT OR IGNORE INTO portfolio_symbols (portfolio_id, symbol) VALUES (?, ?)",
+                    [(portfolio_id, sym) for sym in NASDAQ_100_SYMBOLS],
+                )
+
             conn.commit()
             conn.close()
             print(f"Database initialized at {self.db_path}")
@@ -226,6 +302,291 @@ class StockDatabase:
         except Exception as e:
             print(f"Error checking history freshness for {symbol}: {e}")
             return None
+
+    def get_stock_history_range(self, symbol, start_date, end_date):
+        """Return historical OHLC data filtered by date range, ordered by date ASC."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT date, open, high, low, close, volume
+                FROM stock_history
+                WHERE symbol = ? AND date BETWEEN ? AND ?
+                ORDER BY date ASC
+                """,
+                (symbol, start_date, end_date),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f"Error retrieving stock history range for {symbol}: {e}")
+            return []
+
+    def has_history_coverage(self, symbol, start_date, end_date):
+        """Check if stored history spans the requested date range (MIN <= start AND MAX >= end)."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT MIN(date) as min_date, MAX(date) as max_date FROM stock_history WHERE symbol = ?",
+                (symbol,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0] and row[1]:
+                return row[0] <= start_date and row[1] >= end_date
+            return False
+        except Exception as e:
+            print(f"Error checking history coverage for {symbol}: {e}")
+            return False
+
+    # ── Settings methods ──
+
+    def get_setting(self, key):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] if row else None
+        except Exception as e:
+            print(f"Error getting setting {key}: {e}")
+            return None
+
+    def set_setting(self, key, value):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, value, datetime.now().isoformat()),
+            )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error setting {key}: {e}")
+            return False
+
+    def get_all_settings(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value FROM app_settings")
+            rows = cursor.fetchall()
+            conn.close()
+            return {row[0]: row[1] for row in rows}
+        except Exception as e:
+            print(f"Error getting all settings: {e}")
+            return {}
+
+    # ── Portfolio methods ──
+
+    def get_all_portfolios(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT p.id, p.name, p.is_system, p.created_at,
+                       COUNT(ps.id) as symbol_count
+                FROM portfolios p
+                LEFT JOIN portfolio_symbols ps ON p.id = ps.portfolio_id
+                GROUP BY p.id
+                ORDER BY p.is_system DESC, p.name ASC
+            """)
+            rows = cursor.fetchall()
+            conn.close()
+            return [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "is_system": bool(row["is_system"]),
+                    "symbol_count": row["symbol_count"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            print(f"Error getting portfolios: {e}")
+            return []
+
+    def get_portfolio(self, portfolio_id):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, is_system, created_at FROM portfolios WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return None
+            cursor.execute(
+                "SELECT symbol FROM portfolio_symbols WHERE portfolio_id = ? ORDER BY symbol ASC",
+                (portfolio_id,),
+            )
+            symbols = [r["symbol"] for r in cursor.fetchall()]
+            conn.close()
+            return {
+                "id": row["id"],
+                "name": row["name"],
+                "is_system": bool(row["is_system"]),
+                "symbols": symbols,
+                "symbol_count": len(symbols),
+            }
+        except Exception as e:
+            print(f"Error getting portfolio {portfolio_id}: {e}")
+            return None
+
+    def create_portfolio(self, name):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO portfolios (name, is_system, created_at) VALUES (?, 0, ?)",
+                (name, datetime.now().isoformat()),
+            )
+            conn.commit()
+            new_id = cursor.lastrowid
+            conn.close()
+            return new_id
+        except sqlite3.IntegrityError:
+            return None
+        except Exception as e:
+            print(f"Error creating portfolio: {e}")
+            return None
+
+    def delete_portfolio(self, portfolio_id):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_system FROM portfolios WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+            if row[0] == 1:
+                conn.close()
+                return False  # Cannot delete system portfolio
+            cursor.execute("DELETE FROM portfolio_symbols WHERE portfolio_id = ?", (portfolio_id,))
+            cursor.execute("DELETE FROM portfolios WHERE id = ?", (portfolio_id,))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error deleting portfolio {portfolio_id}: {e}")
+            return False
+
+    def set_portfolio_symbols(self, portfolio_id, symbols):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_system FROM portfolios WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+            if row[0] == 1:
+                conn.close()
+                return False  # Cannot modify system portfolio
+            cursor.execute("DELETE FROM portfolio_symbols WHERE portfolio_id = ?", (portfolio_id,))
+            cursor.executemany(
+                "INSERT OR IGNORE INTO portfolio_symbols (portfolio_id, symbol) VALUES (?, ?)",
+                [(portfolio_id, sym.upper()) for sym in symbols],
+            )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error setting portfolio symbols: {e}")
+            return False
+
+    def add_portfolio_symbols(self, portfolio_id, symbols):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_system FROM portfolios WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+            if row[0] == 1:
+                conn.close()
+                return False
+            cursor.executemany(
+                "INSERT OR IGNORE INTO portfolio_symbols (portfolio_id, symbol) VALUES (?, ?)",
+                [(portfolio_id, sym.upper()) for sym in symbols],
+            )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error adding portfolio symbols: {e}")
+            return False
+
+    def remove_portfolio_symbol(self, portfolio_id, symbol):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_system FROM portfolios WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+            if row[0] == 1:
+                conn.close()
+                return False
+            cursor.execute(
+                "DELETE FROM portfolio_symbols WHERE portfolio_id = ? AND symbol = ?",
+                (portfolio_id, symbol.upper()),
+            )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error removing portfolio symbol: {e}")
+            return False
+
+    def get_portfolio_symbols(self, portfolio_id):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT symbol FROM portfolio_symbols WHERE portfolio_id = ? ORDER BY symbol ASC",
+                (portfolio_id,),
+            )
+            symbols = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return symbols
+        except Exception as e:
+            print(f"Error getting portfolio symbols: {e}")
+            return []
+
+    def get_stocks_by_symbols(self, symbols):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in symbols)
+            cursor.execute(
+                f"""
+                SELECT symbol, name, price, open, high, low, close, volume,
+                       change_percent, last_fetched, timestamp
+                FROM stock_cache
+                WHERE symbol IN ({placeholders})
+                ORDER BY symbol ASC
+                """,
+                symbols,
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f"Error getting stocks by symbols: {e}")
+            return []
 
     def clear_all(self):
         try:

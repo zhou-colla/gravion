@@ -76,6 +76,7 @@ export interface BacktestResultData {
   profit_factor: number;
   max_drawdown_pct: number;
   trades: TradeEntry[];
+  equity_curve: EquityCurvePoint[];
 }
 
 export interface StrategyCondition {
@@ -118,6 +119,7 @@ export interface BatchBacktestResult {
   max_drawdown_pct: number;
   trade_count: number;
   trades: TradeEntry[];
+  equity_curve: EquityCurvePoint[];
 }
 
 export interface BatchBacktestResponse {

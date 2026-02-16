@@ -33,6 +33,7 @@ export default function ChartPanel({
     if (!containerRef.current || detail.ohlc.length === 0) return;
 
     const chart = createChart(containerRef.current, {
+      autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "#131722" },
         textColor: "#787B86",
@@ -93,21 +94,11 @@ export default function ChartPanel({
 
     chart.timeScale().fitContent();
 
-    // Responsive resize
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        chart.applyOptions({ width, height });
-      }
-    });
-    observer.observe(containerRef.current);
-
     return () => {
       if (markersRef.current) {
         markersRef.current.detach();
         markersRef.current = null;
       }
-      observer.disconnect();
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;

@@ -23,6 +23,7 @@ class BacktestResult:
     profit_factor: float
     max_drawdown_pct: float
     trades: list[Trade] = field(default_factory=list)
+    equity_curve: list[dict] = field(default_factory=list)
 
 
 class BaseStrategy(ABC):
@@ -42,3 +43,9 @@ class BaseStrategy(ABC):
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add a 'signal' column to df with values: 'BUY', 'SELL', or ''."""
         ...
+
+    def compute_intensity(self, df: pd.DataFrame) -> str:
+        """Compute current signal intensity from historical data.
+        Returns one of: 'STRONG BUY', 'BUY', 'NEUTRAL', 'SELL', 'STRONG SELL'.
+        Default implementation returns 'NEUTRAL'."""
+        return "NEUTRAL"

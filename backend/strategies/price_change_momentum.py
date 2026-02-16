@@ -19,6 +19,21 @@ class PriceChangeMomentumStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"buy_threshold": 2.0, "sell_threshold": -2.0}
 
+    def compute_intensity(self, df: pd.DataFrame) -> str:
+        chg = daily_change_pct(df["close"]).dropna()
+        if chg.empty:
+            return "NEUTRAL"
+        val = chg.iloc[-1]
+        if val > 2.0:
+            return "STRONG BUY"
+        elif val > 0.5:
+            return "BUY"
+        elif val < -2.0:
+            return "STRONG SELL"
+        elif val < -0.5:
+            return "SELL"
+        return "NEUTRAL"
+
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["change_pct"] = daily_change_pct(df["close"])

@@ -17,6 +17,7 @@ def run_backtest(
     df = strategy.generate_signals(df)
 
     trades: list[Trade] = []
+    equity_curve: list[dict] = []
     position_open = False
     entry_price = 0.0
     shares = 0.0
@@ -43,8 +44,11 @@ def run_backtest(
             position_open = False
             shares = 0.0
 
-        # Track drawdown
+        # Track current portfolio value (cash + market value of holdings)
         current_value = capital if not position_open else shares * price
+        equity_curve.append({"time": str(row["date"]), "value": round(current_value, 2)})
+
+        # Track drawdown
         if current_value > peak_capital:
             peak_capital = current_value
         if peak_capital > 0:
@@ -77,4 +81,5 @@ def run_backtest(
         profit_factor=round(profit_factor, 2) if profit_factor != float("inf") else 999.99,
         max_drawdown_pct=round(max_drawdown, 2),
         trades=trades,
+        equity_curve=equity_curve,
     )

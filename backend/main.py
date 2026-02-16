@@ -118,6 +118,7 @@ class FetchRequest(BaseModel):
 class ScreenRequest(BaseModel):
     portfolio_id: Optional[int] = None
     symbols: Optional[list[str]] = None
+    strategy: Optional[str] = None
 
 
 @app.get("/api/health")
@@ -327,9 +328,25 @@ async def screen_stocks(body: Optional[ScreenRequest] = None):
         data_source = stock_db.get_setting("data_source") or "yahoo_finance"
         source_label = "Yahoo Finance (yfinance)" if data_source == "yahoo_finance" else "Moomoo OpenD"
 
+        # Resolve strategy for signal computation
+        screen_strategy = None
+        if body and body.strategy:
+            screen_strategy = strategy_loader.get(body.strategy)
+
         results = []
         for stock in stocks:
-            stock["signal"] = compute_signal(stock)
+            if screen_strategy is not None:
+                history = stock_db.get_stock_history(stock["symbol"])
+                if history and len(history) >= 2:
+                    df = pd.DataFrame(history)
+                    try:
+                        stock["signal"] = screen_strategy.compute_intensity(df)
+                    except Exception:
+                        stock["signal"] = compute_signal(stock)
+                else:
+                    stock["signal"] = compute_signal(stock)
+            else:
+                stock["signal"] = compute_signal(stock)
             stock["yoy_growth"] = None
             results.append(stock)
 
@@ -464,6 +481,76 @@ async def stock_detail(symbol: str):
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/stock/{symbol}/signal-details")
+async def stock_signal_details(symbol: str, strategy_name: str = ""):
+    """Returns signal calculation details for a symbol, useful for hover tooltips."""
+    try:
+        symbol = symbol.upper()
+        history = stock_db.get_stock_history(symbol)
+        if not history:
+            return {"success": False, "error": f"No history for {symbol}"}
+
+        df = pd.DataFrame(history)
+
+        strategy = strategy_loader.get(strategy_name) if strategy_name else None
+
+        details: dict = {"symbol": symbol, "strategy": strategy_name or "default"}
+
+        if strategy is not None:
+            # Strategy-specific details
+            if strategy_name == "RSI Mean Reversion":
+                from strategies.indicators import rsi as rsi_fn
+                rsi_vals = rsi_fn(df["close"], 14).dropna()
+                current_rsi = round(float(rsi_vals.iloc[-1]), 2) if not rsi_vals.empty else None
+                details["rsi"] = current_rsi
+                details["thresholds"] = {"strong_buy": 20, "buy": 30, "sell": 70, "strong_sell": 80}
+                details["signal"] = strategy.compute_intensity(df)
+
+            elif strategy_name == "Golden Cross":
+                from strategies.indicators import sma as sma_fn
+                fast = sma_fn(df["close"], 50).dropna()
+                slow = sma_fn(df["close"], 100).dropna()
+                f = round(float(fast.iloc[-1]), 2) if not fast.empty else None
+                s = round(float(slow.iloc[-1]), 2) if not slow.empty else None
+                details["ma50"] = f
+                details["ma100"] = s
+                details["thresholds"] = {"strong_buy_pct": 5, "strong_sell_pct": -5}
+                details["signal"] = strategy.compute_intensity(df)
+
+            elif strategy_name == "Price Change Momentum":
+                from strategies.indicators import daily_change_pct as dcp_fn
+                chg = dcp_fn(df["close"]).dropna()
+                val = round(float(chg.iloc[-1]), 2) if not chg.empty else None
+                details["daily_change_pct"] = val
+                details["thresholds"] = {"strong_buy": 2.0, "buy": 0.5, "sell": -0.5, "strong_sell": -2.0}
+                details["signal"] = strategy.compute_intensity(df)
+            else:
+                details["signal"] = strategy.compute_intensity(df)
+        else:
+            # Default: use change_percent from cached stock data
+            stock = stock_db.get_stocks_by_symbols([symbol])
+            chg = stock[0]["change_percent"] if stock else 0
+            details["daily_change_pct"] = chg
+            details["thresholds"] = {"strong_buy": 2.0, "buy": 0.5, "sell": -0.5, "strong_sell": -2.0}
+            from strategies.indicators import daily_change_pct as dcp_fn
+            chg_series = dcp_fn(df["close"]).dropna()
+            val = float(chg_series.iloc[-1]) if not chg_series.empty else 0
+            if val > 2.0:
+                details["signal"] = "STRONG BUY"
+            elif val > 0.5:
+                details["signal"] = "BUY"
+            elif val < -2.0:
+                details["signal"] = "STRONG SELL"
+            elif val < -0.5:
+                details["signal"] = "SELL"
+            else:
+                details["signal"] = "NEUTRAL"
+
+        return {"success": True, **details}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/export")
 async def export_csv():
     """Returns all cached stock data as CSV text."""
@@ -586,6 +673,7 @@ async def batch_backtest(body: BatchBacktestRequest):
                         {"date": t.date, "type": t.type, "price": t.price, "shares": t.shares, "pnl": t.pnl}
                         for t in result.trades
                     ],
+                    "equity_curve": result.equity_curve,
                 })
             except Exception as e:
                 errors.append({"symbol": sym, "error": str(e)})
@@ -671,6 +759,7 @@ async def backtest(symbol: str, body: BacktestRequest):
                     {"date": t.date, "type": t.type, "price": t.price, "shares": t.shares, "pnl": t.pnl}
                     for t in result.trades
                 ],
+                "equity_curve": result.equity_curve,
             },
         }
 

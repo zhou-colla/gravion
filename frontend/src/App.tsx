@@ -10,6 +10,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import PortfolioManager from "./components/PortfolioManager";
 import SourceSelector from "./components/SourceSelector";
 import type { SourceSelection } from "./components/SourceSelector";
+import StrategySelector from "./components/StrategySelector";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(0) + "MB";
@@ -48,6 +49,7 @@ export default function App() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
+  const [scannerStrategy, setScannerStrategy] = useState("");
 
   const checkHealth = async () => {
     try {
@@ -143,7 +145,10 @@ export default function App() {
     setLoading(true);
     setError("");
     try {
-      const body = getSourceBody();
+      const sourceBody = getSourceBody();
+      const body = scannerStrategy
+        ? { ...(sourceBody || {}), strategy: scannerStrategy }
+        : sourceBody;
       const res = await fetch("http://localhost:8000/api/screen", {
         method: "POST",
         headers: body ? { "Content-Type": "application/json" } : {},
@@ -300,6 +305,12 @@ export default function App() {
             portfolios={portfolios}
             selectedSource={scannerSource}
             onSourceChange={setScannerSource}
+          />
+          <div className="h-6 w-px bg-tv-border" />
+          <StrategySelector
+            strategies={strategies}
+            selectedStrategy={scannerStrategy}
+            onStrategyChange={setScannerStrategy}
           />
         </div>
 

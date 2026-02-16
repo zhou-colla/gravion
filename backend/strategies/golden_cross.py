@@ -19,6 +19,25 @@ class GoldenCrossStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"fast_period": 50, "slow_period": 100}
 
+    def compute_intensity(self, df: pd.DataFrame) -> str:
+        fast = sma(df["close"], 50).dropna()
+        slow = sma(df["close"], 100).dropna()
+        if fast.empty or slow.empty:
+            return "NEUTRAL"
+        f, s = fast.iloc[-1], slow.iloc[-1]
+        if s == 0:
+            return "NEUTRAL"
+        ratio = (f - s) / s * 100
+        if ratio > 5:
+            return "STRONG BUY"
+        elif ratio > 0:
+            return "BUY"
+        elif ratio < -5:
+            return "STRONG SELL"
+        elif ratio < 0:
+            return "SELL"
+        return "NEUTRAL"
+
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["ma_fast"] = sma(df["close"], 50)

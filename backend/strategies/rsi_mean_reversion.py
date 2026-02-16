@@ -19,6 +19,21 @@ class RSIMeanReversionStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"rsi_period": 14, "oversold": 30, "overbought": 70}
 
+    def compute_intensity(self, df: pd.DataFrame) -> str:
+        rsi_vals = rsi(df["close"], 14).dropna()
+        if rsi_vals.empty:
+            return "NEUTRAL"
+        val = rsi_vals.iloc[-1]
+        if val < 20:
+            return "STRONG BUY"
+        elif val < 30:
+            return "BUY"
+        elif val > 80:
+            return "STRONG SELL"
+        elif val > 70:
+            return "SELL"
+        return "NEUTRAL"
+
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["rsi"] = rsi(df["close"], 14)

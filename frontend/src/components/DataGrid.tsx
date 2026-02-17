@@ -46,9 +46,12 @@ interface DataGridProps {
   stocks: StockRow[];
   selectedSymbol: string | null;
   onSelectStock: (symbol: string) => void;
+  comparisonStrategies?: string[];
 }
 
-export default function DataGrid({ stocks, selectedSymbol, onSelectStock }: DataGridProps) {
+export default function DataGrid({ stocks, selectedSymbol, onSelectStock, comparisonStrategies = [] }: DataGridProps) {
+  const hasComparison = comparisonStrategies.length > 0;
+
   return (
     <table className="w-full text-left border-collapse">
       <thead className="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
@@ -57,7 +60,14 @@ export default function DataGrid({ stocks, selectedSymbol, onSelectStock }: Data
           <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Price</th>
           <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Chg %</th>
           <th className="px-4 py-2 w-32 text-right border-r border-tv-border/30 text-tv-blue">Data Time</th>
-          <th className="px-4 py-2 border-r border-tv-border/30">Signal Status</th>
+          <th className="px-4 py-2 border-r border-tv-border/30">
+            {hasComparison ? "Primary Signal" : "Signal Status"}
+          </th>
+          {comparisonStrategies.map((s) => (
+            <th key={s} className="px-4 py-2 border-r border-tv-border/30 text-tv-blue/80 whitespace-nowrap">
+              {s}
+            </th>
+          ))}
           <th className="px-4 py-2 text-right">YoY Growth</th>
         </tr>
       </thead>
@@ -110,6 +120,17 @@ export default function DataGrid({ stocks, selectedSymbol, onSelectStock }: Data
                   {stock.signal}
                 </span>
               </td>
+              {comparisonStrategies.map((sname) => {
+                const sig = stock.signals?.[sname] ?? "--";
+                const cStyle = sig !== "--" ? getSignalStyle(sig) : { bg: "bg-tv-panel", text: "text-tv-muted", border: "border-tv-border" };
+                return (
+                  <td key={sname} className="px-4 py-2.5">
+                    <span className={`${cStyle.bg} ${cStyle.text} text-xs px-1.5 py-0.5 rounded border ${cStyle.border}`}>
+                      {sig}
+                    </span>
+                  </td>
+                );
+              })}
               <td className="px-4 py-2.5 text-right font-mono text-tv-muted">--</td>
             </tr>
           );

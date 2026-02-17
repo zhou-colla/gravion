@@ -1,14 +1,54 @@
 import { useState } from "react";
-import type { StrategyInfo, OptimizeResponse, OptimizeResult } from "../types/stock";
+import type { StrategyInfo, OptimizeResponse, OptimizeResult, ParamMeta } from "../types/stock";
 
-interface ParamSweep {
+interface SweepRow {
   param: string;
-  values: string; // comma-separated input string
+  mode: "range" | "values";
+  // Range mode
+  min: string;
+  max: string;
+  step: string;
+  // Values mode
+  values: string;
 }
 
 interface OptimizerPanelProps {
   strategies: StrategyInfo[];
   availableSymbols: string[];
+  realtime: boolean;
+}
+
+function rangeToValues(min: number, max: number, step: number): number[] {
+  if (isNaN(min) || isNaN(max) || isNaN(step) || step <= 0) return [];
+  const vals: number[] = [];
+  for (let v = min; v <= max + step * 0.0001; v += step) {
+    vals.push(Math.round(v * 100000) / 100000);
+  }
+  return vals;
+}
+
+function sweepRowToValues(row: SweepRow): number[] {
+  if (row.mode === "range") {
+    return rangeToValues(parseFloat(row.min), parseFloat(row.max), parseFloat(row.step));
+  }
+  return row.values
+    .split(",")
+    .map((v) => parseFloat(v.trim()))
+    .filter((v) => !isNaN(v));
+}
+
+function emptyRow(param = "", meta?: ParamMeta): SweepRow {
+  if (meta) {
+    return {
+      param,
+      mode: "range",
+      min: String(meta.min),
+      max: String(meta.max),
+      step: String(meta.step),
+      values: "",
+    };
+  }
+  return { param, mode: "values", min: "", max: "", step: "", values: "" };
 }
 
 function formatPct(v: number | undefined): string {
@@ -16,41 +56,56 @@ function formatPct(v: number | undefined): string {
   return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 
-export default function OptimizerPanel({ strategies, availableSymbols }: OptimizerPanelProps) {
+export default function OptimizerPanel({ strategies, availableSymbols, realtime }: OptimizerPanelProps) {
   const [selectedStrategy, setSelectedStrategy] = useState("");
   const [symbol, setSymbol] = useState("");
   const [period, setPeriod] = useState("1y");
   const [usePeriod, setUsePeriod] = useState(true);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [sweeps, setSweeps] = useState<ParamSweep[]>([{ param: "", values: "" }]);
+  const [sweeps, setSweeps] = useState<SweepRow[]>([emptyRow()]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [error, setError] = useState("");
   const [sortKey, setSortKey] = useState<keyof OptimizeResult>("total_return_pct");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const addSweep = () => setSweeps((prev) => [...prev, { param: "", values: "" }]);
+  const handleStrategyChange = (name: string) => {
+    setSelectedStrategy(name);
+    setResult(null);
+    setError("");
+    const strat = strategies.find((s) => s.name === name);
+    if (strat?.param_meta && Object.keys(strat.param_meta).length > 0) {
+      setSweeps(
+        Object.entries(strat.param_meta).map(([param, meta]) => emptyRow(param, meta))
+      );
+    } else {
+      setSweeps([emptyRow()]);
+    }
+  };
+
+  const addSweep = () => setSweeps((prev) => [...prev, emptyRow()]);
 
   const removeSweep = (i: number) => setSweeps((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateSweep = (i: number, field: keyof ParamSweep, val: string) => {
-    setSweeps((prev) => prev.map((s, idx) => (idx === i ? { ...s, [field]: val } : s)));
+  const updateSweep = (i: number, patch: Partial<SweepRow>) => {
+    setSweeps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   };
+
+  // Compute total combinations for preview
+  const totalCombinations = sweeps.reduce((acc, row) => {
+    if (!row.param.trim()) return acc;
+    const vals = sweepRowToValues(row);
+    return acc * (vals.length || 1);
+  }, 1);
 
   const runOptimizer = async () => {
     if (!selectedStrategy || !symbol.trim()) return;
 
-    const validSweeps = sweeps.filter((s) => s.param.trim() && s.values.trim());
-    if (validSweeps.length === 0) return;
-
-    const param_sweeps = validSweeps.map((s) => ({
-      param: s.param.trim(),
-      values: s.values
-        .split(",")
-        .map((v) => parseFloat(v.trim()))
-        .filter((v) => !isNaN(v)),
-    })).filter((s) => s.values.length > 0);
+    const validSweeps = sweeps.filter((s) => s.param.trim());
+    const param_sweeps = validSweeps
+      .map((s) => ({ param: s.param.trim(), values: sweepRowToValues(s) }))
+      .filter((s) => s.values.length > 0);
 
     if (param_sweeps.length === 0) return;
 
@@ -63,6 +118,7 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
         strategy_name: selectedStrategy,
         param_sweeps,
         initial_capital: 10000,
+        realtime,
       };
       if (usePeriod) {
         payload.period = period;
@@ -118,6 +174,8 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
       <span className="ml-1 text-tv-border">▼</span>
     );
 
+  const selectedStrategyInfo = strategies.find((s) => s.name === selectedStrategy);
+
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {/* Config bar */}
@@ -127,7 +185,7 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
           <label className="text-[10px] text-tv-muted uppercase font-medium">Strategy</label>
           <select
             value={selectedStrategy}
-            onChange={(e) => setSelectedStrategy(e.target.value)}
+            onChange={(e) => handleStrategyChange(e.target.value)}
             className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer min-w-[160px]"
           >
             <option value="">Select strategy…</option>
@@ -188,9 +246,16 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
         </div>
 
         {/* Param sweeps */}
-        <div className="flex flex-col space-y-1 flex-1 min-w-[280px]">
+        <div className="flex flex-col space-y-1 flex-1 min-w-[340px]">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] text-tv-muted uppercase font-medium">Parameter Sweeps</label>
+            <label className="text-[10px] text-tv-muted uppercase font-medium">
+              Parameter Sweeps
+              {totalCombinations > 1 && (
+                <span className="ml-2 normal-case text-tv-blue">
+                  ({totalCombinations} combination{totalCombinations !== 1 ? "s" : ""})
+                </span>
+              )}
+            </label>
             <button
               onClick={addSweep}
               className="text-[10px] text-tv-blue hover:underline cursor-pointer"
@@ -198,36 +263,109 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
               + Add Param
             </button>
           </div>
-          <div className="space-y-1">
-            {sweeps.map((s, i) => (
-              <div key={i} className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={s.param}
-                  onChange={(e) => updateSweep(i, "param", e.target.value)}
-                  placeholder="param name"
-                  className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-28"
-                />
-                <span className="text-tv-muted text-xs">=</span>
-                <input
-                  type="text"
-                  value={s.values}
-                  onChange={(e) => updateSweep(i, "values", e.target.value)}
-                  placeholder="10, 20, 50"
-                  className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue flex-1"
-                />
-                {sweeps.length > 1 && (
-                  <button
-                    onClick={() => removeSweep(i)}
-                    className="text-tv-muted hover:text-tv-red cursor-pointer"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+          <div className="space-y-1.5">
+            {sweeps.map((row, i) => {
+              const meta = selectedStrategyInfo?.param_meta?.[row.param];
+              return (
+                <div key={i} className="flex items-center gap-2 flex-wrap">
+                  {/* Param name */}
+                  {selectedStrategyInfo?.param_meta && Object.keys(selectedStrategyInfo.param_meta).length > 0 ? (
+                    <select
+                      value={row.param}
+                      onChange={(e) => {
+                        const p = e.target.value;
+                        const m = selectedStrategyInfo?.param_meta?.[p];
+                        updateSweep(i, m ? { param: p, mode: "range", min: String(m.min), max: String(m.max), step: String(m.step) } : { param: p });
+                      }}
+                      className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer w-36"
+                    >
+                      <option value="">Select param…</option>
+                      {Object.entries(selectedStrategyInfo.param_meta).map(([p, m]) => (
+                        <option key={p} value={p}>{m.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={row.param}
+                      onChange={(e) => updateSweep(i, { param: e.target.value })}
+                      placeholder="param name"
+                      className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-28"
+                    />
+                  )}
+
+                  {/* Mode toggle */}
+                  <div className="flex bg-tv-base rounded border border-tv-border overflow-hidden">
+                    <button
+                      onClick={() => updateSweep(i, { mode: "range" })}
+                      className={`px-2 py-0.5 text-[10px] transition cursor-pointer ${row.mode === "range" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"}`}
+                    >
+                      Range
+                    </button>
+                    <button
+                      onClick={() => updateSweep(i, { mode: "values" })}
+                      className={`px-2 py-0.5 text-[10px] transition cursor-pointer ${row.mode === "values" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"}`}
+                    >
+                      Values
+                    </button>
+                  </div>
+
+                  {/* Inputs */}
+                  {row.mode === "range" ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={row.min}
+                        onChange={(e) => updateSweep(i, { min: e.target.value })}
+                        placeholder="min"
+                        className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-16"
+                      />
+                      <span className="text-tv-muted text-[10px]">to</span>
+                      <input
+                        type="number"
+                        value={row.max}
+                        onChange={(e) => updateSweep(i, { max: e.target.value })}
+                        placeholder="max"
+                        className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-16"
+                      />
+                      <span className="text-tv-muted text-[10px]">step</span>
+                      <input
+                        type="number"
+                        value={row.step}
+                        onChange={(e) => updateSweep(i, { step: e.target.value })}
+                        placeholder="step"
+                        className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-14"
+                      />
+                      {/* Live count for this row */}
+                      {row.param && (
+                        <span className="text-[10px] text-tv-muted">
+                          ({rangeToValues(parseFloat(row.min), parseFloat(row.max), parseFloat(row.step)).length} vals)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={row.values}
+                      onChange={(e) => updateSweep(i, { values: e.target.value })}
+                      placeholder={meta ? `e.g. ${meta.default}, ${meta.default + meta.step}` : "10, 20, 50"}
+                      className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue flex-1 min-w-[120px]"
+                    />
+                  )}
+
+                  {sweeps.length > 1 && (
+                    <button
+                      onClick={() => removeSweep(i)}
+                      className="text-tv-muted hover:text-tv-red cursor-pointer shrink-0"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -269,7 +407,7 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
-              <p className="text-tv-muted text-xs">Testing parameter combinations…</p>
+              <p className="text-tv-muted text-xs">Testing {totalCombinations} parameter combination{totalCombinations !== 1 ? "s" : ""}…</p>
             </div>
           </div>
         )}
@@ -284,10 +422,10 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
               </div>
               <h3 className="text-base font-medium mb-2 text-tv-text">Parameter Optimizer</h3>
               <p className="text-tv-muted text-xs mb-1">
-                Select a strategy, enter a symbol, and define parameter sweeps.
+                Select a strategy to auto-populate its parameters, then enter a symbol and click Optimize.
               </p>
               <p className="text-tv-muted text-xs">
-                All combinations will be tested and ranked by return.
+                Use Range mode for sweep ranges or Values mode for specific values.
               </p>
             </div>
           </div>
@@ -309,11 +447,14 @@ export default function OptimizerPanel({ strategies, availableSymbols }: Optimiz
                 <tr className="border-b border-tv-border">
                   <th className="px-3 py-2 border-r border-tv-border/30">#</th>
                   {/* Dynamic param columns */}
-                  {sweeps.filter((s) => s.param.trim()).map((s) => (
-                    <th key={s.param} className="px-3 py-2 border-r border-tv-border/30 text-tv-blue/80">
-                      {s.param}
-                    </th>
-                  ))}
+                  {sweeps.filter((s) => s.param.trim()).map((s) => {
+                    const meta = selectedStrategyInfo?.param_meta?.[s.param];
+                    return (
+                      <th key={s.param} className="px-3 py-2 border-r border-tv-border/30 text-tv-blue/80">
+                        {meta?.label || s.param}
+                      </th>
+                    );
+                  })}
                   <th
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("total_return_pct")}

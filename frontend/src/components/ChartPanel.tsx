@@ -12,6 +12,8 @@ interface ChartPanelProps {
   onRunBacktest: () => void;
   backtestLoading: boolean;
   highlightedTrade: TradeEntry | null;
+  isLoading?: boolean;
+  loadingSymbol?: string;
 }
 
 export default function ChartPanel({
@@ -23,6 +25,8 @@ export default function ChartPanel({
   onRunBacktest,
   backtestLoading,
   highlightedTrade,
+  isLoading = false,
+  loadingSymbol,
 }: ChartPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -150,7 +154,19 @@ export default function ChartPanel({
               <div className="w-2 h-2 rounded-full bg-[#F6A90E] mr-1" />
               <span className="text-tv-muted">100MA</span>
             </span>
+            {detail.current_rsi !== null && detail.current_rsi !== undefined && (
+              <span className="flex items-center text-tv-muted">
+                RSI <span className={`ml-1 font-mono font-medium ${
+                  detail.current_rsi < 30 ? "text-tv-green" : detail.current_rsi > 70 ? "text-tv-red" : "text-tv-text"
+                }`}>{detail.current_rsi.toFixed(1)}</span>
+              </span>
+            )}
           </div>
+          {detail.from_cache && (
+            <span className="text-[10px] text-tv-muted bg-tv-panel border border-tv-border/50 rounded px-1.5 py-0.5">
+              cached
+            </span>
+          )}
           <div className="h-4 w-px bg-tv-border" />
           {/* Strategy Controls */}
           <select
@@ -192,7 +208,16 @@ export default function ChartPanel({
       </div>
 
       {/* Chart Container */}
-      <div ref={containerRef} className="flex-1" />
+      <div ref={containerRef} className="flex-1 relative">
+        {isLoading && (
+          <div className="absolute inset-0 bg-tv-base/60 flex items-center justify-center z-10 pointer-events-none">
+            <div className="flex items-center space-x-2 bg-tv-panel border border-tv-border rounded px-3 py-2">
+              <div className="w-4 h-4 border-2 border-tv-blue border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-tv-muted">Loading {loadingSymbol}...</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

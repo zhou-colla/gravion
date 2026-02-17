@@ -7,6 +7,7 @@ from db import stock_db, NASDAQ_100_SYMBOLS
 from strategies.loader import strategy_loader
 from strategies.json_strategy import JsonStrategy
 from strategies.backtest_engine import run_backtest
+from filters import filter_registry, evaluate_filter, condition_label
 
 import os
 import pandas as pd
@@ -119,6 +120,7 @@ class ScreenRequest(BaseModel):
     portfolio_id: Optional[int] = None
     symbols: Optional[list[str]] = None
     strategy: Optional[str] = None
+    filter: Optional[str] = None  # name of filter to apply
 
 
 @app.get("/api/health")
@@ -333,8 +335,17 @@ async def screen_stocks(body: Optional[ScreenRequest] = None):
         if body and body.strategy:
             screen_strategy = strategy_loader.get(body.strategy)
 
+        # Resolve active filter
+        active_filter = None
+        active_filter_conditions = []
+        if body and body.filter:
+            active_filter = filter_registry.get(body.filter)
+            if active_filter:
+                active_filter_conditions = active_filter.get("conditions", [])
+
         results = []
         for stock in stocks:
+            # Compute signal
             if screen_strategy is not None:
                 history = stock_db.get_stock_history(stock["symbol"])
                 if history and len(history) >= 2:
@@ -348,13 +359,25 @@ async def screen_stocks(body: Optional[ScreenRequest] = None):
             else:
                 stock["signal"] = compute_signal(stock)
             stock["yoy_growth"] = None
+
+            # Apply filter if specified
+            if active_filter_conditions:
+                history = stock_db.get_stock_history(stock["symbol"])
+                if not evaluate_filter(history, active_filter_conditions):
+                    continue  # Skip stocks that don't pass the filter
+
             results.append(stock)
+
+        # Build active filter tag labels for the frontend
+        filter_tags = [condition_label(c) for c in active_filter_conditions]
 
         return {
             "success": True,
             "data": results,
             "count": len(results),
             "source": source_label,
+            "active_filter": body.filter if body and body.filter else None,
+            "filter_tags": filter_tags,
         }
 
     except Exception as e:
@@ -369,115 +392,275 @@ async def db_info():
     return {"success": True, **info}
 
 
-@app.get("/api/stock/{symbol}/detail")
-async def stock_detail(symbol: str):
-    """
-    Returns chart data (6mo OHLC + 50MA/100MA) and fundamentals for a single stock.
-    Uses cached stock_history if fetched today; otherwise fetches fresh data.
-    """
+def _fetch_yfinance_history(symbol: str, period: str = "6mo") -> list[dict] | None:
+    """Download OHLC history from yfinance and return as list of dicts. Returns None on failure."""
     try:
         import yfinance as yf
-        import pandas as pd
-        from datetime import datetime, date
+        df = yf.download(symbol, period=period, progress=False)
+        if df.empty:
+            return None
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        rows = []
+        for idx, row in df.iterrows():
+            rows.append({
+                "date": idx.strftime("%Y-%m-%d"),
+                "open": float(row["Open"]) if pd.notna(row["Open"]) else None,
+                "high": float(row["High"]) if pd.notna(row["High"]) else None,
+                "low": float(row["Low"]) if pd.notna(row["Low"]) else None,
+                "close": float(row["Close"]) if pd.notna(row["Close"]) else None,
+                "volume": int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
+            })
+        return rows
+    except Exception as e:
+        print(f"yfinance history fetch failed for {symbol}: {e}")
+        return None
+
+
+def _build_detail_response(symbol: str, history_rows: list[dict], from_cache: bool) -> dict:
+    """Build the full detail response from history rows using local indicator calculations."""
+    from strategies.indicators import sma, rsi as rsi_fn, macd as macd_fn, bollinger_bands
+
+    ohlc = []
+    volume_data = []
+    closes_list = []
+    dates_list = []
+    for r in history_rows:
+        if r["close"] is not None:
+            ohlc.append({"time": r["date"], "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"]})
+            volume_data.append({"time": r["date"], "value": r["volume"]})
+            closes_list.append(r["close"])
+            dates_list.append(r["date"])
+
+    if not closes_list:
+        return {"success": False, "error": "No valid OHLC data in cache"}
+
+    close_series = pd.Series(closes_list)
+
+    # Moving Averages
+    ma50_raw = sma(close_series, 50)
+    ma100_raw = sma(close_series, 100)
+    ma50 = [{"time": dates_list[i], "value": round(float(ma50_raw.iloc[i]), 2)}
+            for i in range(len(dates_list)) if pd.notna(ma50_raw.iloc[i])]
+    ma100 = [{"time": dates_list[i], "value": round(float(ma100_raw.iloc[i]), 2)}
+             for i in range(len(dates_list)) if pd.notna(ma100_raw.iloc[i])]
+
+    # RSI
+    rsi_series = rsi_fn(close_series, 14)
+    rsi_data = [{"time": dates_list[i], "value": round(float(rsi_series.iloc[i]), 2)}
+                for i in range(len(dates_list)) if pd.notna(rsi_series.iloc[i])]
+    current_rsi = round(float(rsi_series.dropna().iloc[-1]), 2) if not rsi_series.dropna().empty else None
+
+    # MACD
+    macd_line, signal_line, histogram = macd_fn(close_series)
+    macd_data = []
+    for i in range(len(dates_list)):
+        if pd.notna(macd_line.iloc[i]) and pd.notna(signal_line.iloc[i]):
+            macd_data.append({
+                "time": dates_list[i],
+                "macd": round(float(macd_line.iloc[i]), 4),
+                "signal": round(float(signal_line.iloc[i]), 4),
+                "histogram": round(float(histogram.iloc[i]), 4),
+            })
+
+    # Bollinger Bands
+    bb_upper, bb_middle, bb_lower = bollinger_bands(close_series, 20)
+    bb_data = []
+    for i in range(len(dates_list)):
+        if pd.notna(bb_upper.iloc[i]):
+            bb_data.append({
+                "time": dates_list[i],
+                "upper": round(float(bb_upper.iloc[i]), 2),
+                "middle": round(float(bb_middle.iloc[i]), 2),
+                "lower": round(float(bb_lower.iloc[i]), 2),
+            })
+
+    # 52-week high/low from cached data
+    cached_high = max(closes_list) if closes_list else None
+    cached_low = min(closes_list) if closes_list else None
+
+    return {
+        "ohlc": ohlc,
+        "ma50": ma50,
+        "ma100": ma100,
+        "volume": volume_data,
+        "rsi": rsi_data,
+        "current_rsi": current_rsi,
+        "macd": macd_data,
+        "bollinger": bb_data,
+        "cached_52w_high": round(cached_high, 2) if cached_high else None,
+        "cached_52w_low": round(cached_low, 2) if cached_low else None,
+        "from_cache": from_cache,
+        "data_points": len(closes_list),
+    }
+
+
+@app.get("/api/stock/{symbol}/detail")
+async def stock_detail(symbol: str, realtime: bool = False):
+    """
+    Returns chart data (OHLC + 50MA/100MA + RSI + MACD + Bollinger) and fundamentals.
+
+    Cache-first strategy:
+    - If realtime=False (default): serve from cached history immediately; never call yfinance for OHLC.
+    - If realtime=True: attempt fresh yfinance download, save to cache, fall back to cache on failure.
+    - Fundamentals (PE, market cap, etc.) are always attempted from yfinance but use cached fallbacks.
+    """
+    try:
+        from datetime import datetime
 
         symbol = symbol.upper()
+        cached_rows = stock_db.get_stock_history(symbol)
+        has_cache = bool(cached_rows)
+        history_rows = None
+        from_cache = False
 
-        # Check cache freshness
-        freshness = stock_db.get_history_freshness(symbol)
-        use_cache = False
-        if freshness and freshness["last_fetch"]:
-            fetched_date = freshness["last_fetch"][:10]  # YYYY-MM-DD
-            if fetched_date == date.today().isoformat():
-                use_cache = True
-
-        if use_cache:
-            history_rows = stock_db.get_stock_history(symbol)
+        if realtime:
+            fresh = _fetch_yfinance_history(symbol)
+            if fresh:
+                stock_db.save_stock_history(symbol, fresh)
+                history_rows = fresh
+                from_cache = False
+            elif has_cache:
+                history_rows = cached_rows
+                from_cache = True
+                print(f"Realtime fetch failed for {symbol}; serving from cache")
+            else:
+                return {"success": False, "error": f"No data for {symbol}. Enable Realtime Fetch and click Fetch & Run first."}
         else:
-            # Fetch 6 months of daily data
-            df = yf.download(symbol, period="6mo", progress=False)
-            if df.empty:
-                return {"success": False, "error": f"No data found for {symbol}"}
+            if has_cache:
+                history_rows = cached_rows
+                from_cache = True
+            else:
+                return {"success": False, "error": f"No cached data for {symbol}. Enable Realtime Fetch and click Fetch & Run first."}
 
-            # Flatten MultiIndex columns if present (yfinance returns MultiIndex for single ticker too)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+        # Build OHLC + local indicator response
+        detail = _build_detail_response(symbol, history_rows, from_cache)
+        if not detail.get("success", True):
+            return detail
 
-            rows = []
-            for idx, row in df.iterrows():
-                rows.append({
-                    "date": idx.strftime("%Y-%m-%d"),
-                    "open": float(row["Open"]) if pd.notna(row["Open"]) else None,
-                    "high": float(row["High"]) if pd.notna(row["High"]) else None,
-                    "low": float(row["Low"]) if pd.notna(row["Low"]) else None,
-                    "close": float(row["Close"]) if pd.notna(row["Close"]) else None,
-                    "volume": int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
-                })
-            stock_db.save_stock_history(symbol, rows)
-            history_rows = rows
-
-        # Build OHLC series
-        ohlc = []
-        volume_data = []
-        closes = []
-        dates = []
-        for r in history_rows:
-            if r["close"] is not None:
-                ohlc.append({"time": r["date"], "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"]})
-                volume_data.append({"time": r["date"], "value": r["volume"]})
-                closes.append(r["close"])
-                dates.append(r["date"])
-
-        # Compute Moving Averages
-        ma50 = []
-        ma100 = []
-        for i in range(len(closes)):
-            if i >= 49:
-                avg = sum(closes[i - 49 : i + 1]) / 50
-                ma50.append({"time": dates[i], "value": round(avg, 2)})
-            if i >= 99:
-                avg = sum(closes[i - 99 : i + 1]) / 100
-                ma100.append({"time": dates[i], "value": round(avg, 2)})
-
-        # Fetch fundamentals via yfinance Ticker
+        # Fundamentals: only call yfinance when realtime=True to avoid rate limits
         fundamentals = {
             "pe_ratio": None,
             "market_cap": None,
             "earnings_date": None,
             "sector": None,
-            "fifty_two_week_high": None,
-            "fifty_two_week_low": None,
+            "fifty_two_week_high": detail["cached_52w_high"],
+            "fifty_two_week_low": detail["cached_52w_low"],
         }
         company_name = symbol
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info or {}
-            fundamentals["pe_ratio"] = info.get("trailingPE")
-            fundamentals["market_cap"] = info.get("marketCap")
-            fundamentals["sector"] = info.get("sector")
-            fundamentals["fifty_two_week_high"] = info.get("fiftyTwoWeekHigh")
-            fundamentals["fifty_two_week_low"] = info.get("fiftyTwoWeekLow")
-            company_name = info.get("shortName") or symbol
-
-            # Earnings date
-            ed = info.get("earningsTimestamp")
-            if ed:
-                fundamentals["earnings_date"] = datetime.fromtimestamp(ed).strftime("%Y-%m-%d")
-        except Exception:
-            pass
+        if realtime:
+            try:
+                import yfinance as yf
+                ticker = yf.Ticker(symbol)
+                info = ticker.info or {}
+                fundamentals["pe_ratio"] = info.get("trailingPE")
+                fundamentals["market_cap"] = info.get("marketCap")
+                fundamentals["sector"] = info.get("sector")
+                fw_high = info.get("fiftyTwoWeekHigh")
+                fw_low = info.get("fiftyTwoWeekLow")
+                if fw_high:
+                    fundamentals["fifty_two_week_high"] = fw_high
+                if fw_low:
+                    fundamentals["fifty_two_week_low"] = fw_low
+                company_name = info.get("shortName") or symbol
+                ed = info.get("earningsTimestamp")
+                if ed:
+                    fundamentals["earnings_date"] = datetime.fromtimestamp(ed).strftime("%Y-%m-%d")
+            except Exception as e:
+                print(f"Fundamentals fetch failed for {symbol} (using cached fallback): {e}")
+        else:
+            # Use cached stock data for company name and price-derived fields
+            cached_stock = stock_db.get_stocks_by_symbols([symbol])
+            if cached_stock:
+                company_name = cached_stock[0].get("name") or symbol
 
         return {
             "success": True,
             "symbol": symbol,
             "company_name": company_name,
-            "ohlc": ohlc,
-            "ma50": ma50,
-            "ma100": ma100,
-            "volume": volume_data,
+            "from_cache": detail["from_cache"],
+            "data_points": detail["data_points"],
+            "ohlc": detail["ohlc"],
+            "ma50": detail["ma50"],
+            "ma100": detail["ma100"],
+            "volume": detail["volume"],
+            "rsi": detail["rsi"],
+            "current_rsi": detail["current_rsi"],
+            "macd": detail["macd"],
+            "bollinger": detail["bollinger"],
             "fundamentals": fundamentals,
         }
 
     except Exception as e:
         print(f"Detail endpoint failed for {symbol}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+class PrecacheRequest(BaseModel):
+    portfolio_id: Optional[int] = None
+    symbols: Optional[list[str]] = None
+    period: str = "6mo"
+
+
+@app.post("/api/precache")
+async def precache_history(body: Optional[PrecacheRequest] = None):
+    """
+    Pre-cache 6-month historical OHLC data for a set of symbols.
+    Processes in small batches to avoid rate limits.
+    Call this after /api/fetch to populate chart history without clicking each stock.
+    """
+    try:
+        import asyncio
+
+        if body and body.symbols:
+            symbols = [s.upper() for s in body.symbols]
+        elif body and body.portfolio_id:
+            symbols = stock_db.get_portfolio_symbols(body.portfolio_id)
+            if not symbols:
+                return {"success": False, "error": "Portfolio not found or has no symbols"}
+        else:
+            symbols = _get_system_portfolio_symbols()
+
+        period = (body.period if body and body.period else "6mo")
+        cached = 0
+        skipped = 0
+        errors = []
+
+        # Process in batches of 5 to avoid rate limits
+        batch_size = 5
+        for batch_start in range(0, len(symbols), batch_size):
+            batch = symbols[batch_start:batch_start + batch_size]
+            for sym in batch:
+                try:
+                    # Skip if already cached today
+                    freshness = stock_db.get_history_freshness(sym)
+                    if freshness and freshness["last_fetch"]:
+                        from datetime import date
+                        if freshness["last_fetch"][:10] == date.today().isoformat():
+                            skipped += 1
+                            continue
+                    rows = _fetch_yfinance_history(sym, period)
+                    if rows:
+                        stock_db.save_stock_history(sym, rows)
+                        cached += 1
+                    else:
+                        errors.append(f"{sym}: no data returned")
+                except Exception as e:
+                    errors.append(f"{sym}: {str(e)}")
+            # Small delay between batches to be gentle on rate limits
+            if batch_start + batch_size < len(symbols):
+                await asyncio.sleep(0.5)
+
+        return {
+            "success": True,
+            "cached": cached,
+            "skipped_already_cached": skipped,
+            "total": len(symbols),
+            "errors": len(errors),
+            "error_details": errors[:10],
+        }
+    except Exception as e:
+        print(f"Precache failed: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -621,6 +804,47 @@ async def delete_strategy(name: str):
     if strategy_loader.remove(name):
         return {"success": True}
     return {"success": False, "error": f"Strategy '{name}' not found"}
+
+
+class SaveFilterRequest(BaseModel):
+    name: str
+    description: str = ""
+    conditions: list[dict]
+
+
+@app.get("/api/filters")
+async def list_filters():
+    """Return all registered filters (built-in + user-defined)."""
+    return {"filters": filter_registry.list_all()}
+
+
+@app.post("/api/filters")
+async def create_filter(body: SaveFilterRequest):
+    """Create or update a user-defined filter."""
+    try:
+        if not body.name.strip():
+            return {"success": False, "error": "Filter name cannot be empty"}
+        if not body.conditions:
+            return {"success": False, "error": "Filter must have at least one condition"}
+        filter_def = {
+            "name": body.name.strip(),
+            "description": body.description.strip(),
+            "conditions": body.conditions,
+        }
+        filter_registry.add(filter_def)
+        return {"success": True, "name": filter_def["name"]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/api/filters/{name}")
+async def delete_filter(name: str):
+    """Delete a user-defined filter. Built-in filters cannot be deleted."""
+    if filter_registry.get(name) and filter_registry.get(name).get("builtin"):
+        return {"success": False, "error": f"Cannot delete built-in filter '{name}'"}
+    if filter_registry.remove(name):
+        return {"success": True}
+    return {"success": False, "error": f"Filter '{name}' not found"}
 
 
 @app.post("/api/backtest/batch")

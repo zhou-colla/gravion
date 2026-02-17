@@ -7,6 +7,10 @@ from .indicators import sma
 
 
 class GoldenCrossStrategy(BaseStrategy):
+    def __init__(self, fast_period: int = 50, slow_period: int = 100):
+        self._fast_period = int(fast_period)
+        self._slow_period = int(slow_period)
+
     @property
     def name(self) -> str:
         return "Golden Cross"
@@ -17,11 +21,11 @@ class GoldenCrossStrategy(BaseStrategy):
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"fast_period": 50, "slow_period": 100}
+        return {"fast_period": self._fast_period, "slow_period": self._slow_period}
 
     def compute_intensity(self, df: pd.DataFrame) -> str:
-        fast = sma(df["close"], 50).dropna()
-        slow = sma(df["close"], 100).dropna()
+        fast = sma(df["close"], self._fast_period).dropna()
+        slow = sma(df["close"], self._slow_period).dropna()
         if fast.empty or slow.empty:
             return "NEUTRAL"
         f, s = fast.iloc[-1], slow.iloc[-1]
@@ -40,8 +44,8 @@ class GoldenCrossStrategy(BaseStrategy):
 
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        df["ma_fast"] = sma(df["close"], 50)
-        df["ma_slow"] = sma(df["close"], 100)
+        df["ma_fast"] = sma(df["close"], self._fast_period)
+        df["ma_slow"] = sma(df["close"], self._slow_period)
         df["signal"] = ""
 
         for i in range(1, len(df)):

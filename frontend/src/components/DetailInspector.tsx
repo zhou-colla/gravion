@@ -85,6 +85,7 @@ export default function DetailInspector({ detail, loading, onClose, backtestResu
 
   const f = detail.fundamentals;
   const lastPrice = detail.ohlc.length > 0 ? detail.ohlc[detail.ohlc.length - 1].close : null;
+  const isFromCache = detail.from_cache;
 
   return (
     <aside className="w-[280px] border-l border-tv-border bg-tv-base flex flex-col shrink-0 overflow-hidden">
@@ -93,6 +94,9 @@ export default function DetailInspector({ detail, loading, onClose, backtestResu
         <div className="flex items-center space-x-2 min-w-0">
           <span className="font-bold text-tv-text truncate">{detail.symbol}</span>
           <span className="text-tv-muted text-xs truncate">{detail.company_name}</span>
+          {isFromCache && (
+            <span className="text-[9px] text-tv-muted bg-tv-panel border border-tv-border/50 rounded px-1 shrink-0">cached</span>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -161,6 +165,13 @@ export default function DetailInspector({ detail, loading, onClose, backtestResu
                 />
                 {lastPrice !== null && (
                   <StatRow label="Current" value={`$${lastPrice.toFixed(2)}`} />
+                )}
+                {detail.current_rsi !== null && detail.current_rsi !== undefined && (
+                  <StatRow
+                    label="RSI(14)"
+                    value={detail.current_rsi.toFixed(1)}
+                    color={detail.current_rsi < 30 ? "text-tv-green" : detail.current_rsi > 70 ? "text-tv-red" : "text-tv-text"}
+                  />
                 )}
               </div>
             </div>

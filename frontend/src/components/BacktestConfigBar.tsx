@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import type { StrategyInfo, Portfolio } from "../types/stock";
 
+export const STRATEGY_COLORS = ["#2962FF", "#26A69A", "#EF5350", "#FF9800", "#AB47BC"];
+
 interface BacktestConfigBarProps {
   selectedSymbols: string[];
   onSymbolsChange: (symbols: string[]) => void;
   availableSymbols: string[];
   strategies: StrategyInfo[];
-  selectedStrategy: string;
-  onStrategyChange: (name: string) => void;
+  selectedStrategies: string[];
+  onStrategiesChange: (names: string[]) => void;
   period: string;
   onPeriodChange: (period: string) => void;
   usePeriod: boolean;
@@ -32,8 +34,8 @@ export default function BacktestConfigBar({
   onSymbolsChange,
   availableSymbols,
   strategies,
-  selectedStrategy,
-  onStrategyChange,
+  selectedStrategies,
+  onStrategiesChange,
   period,
   onPeriodChange,
   usePeriod,
@@ -118,12 +120,15 @@ export default function BacktestConfigBar({
     }
   };
 
-  const selectedStrategyInfo = strategies.find((s) => s.name === selectedStrategy);
-  const canDelete = selectedStrategyInfo && !selectedStrategyInfo.builtin;
+  // Delete: only when exactly one non-builtin strategy is selected alone
+  const deletableStrategy = selectedStrategies.length === 1
+    ? strategies.find((s) => s.name === selectedStrategies[0] && !s.builtin)
+    : undefined;
+  const canDelete = !!deletableStrategy;
   const canRun =
     ((sourceMode === "manual" && selectedSymbols.length > 0) ||
       (sourceMode === "portfolio" && selectedPortfolioId !== null)) &&
-    !!selectedStrategy &&
+    selectedStrategies.length > 0 &&
     !loading;
 
   return (
@@ -274,20 +279,46 @@ export default function BacktestConfigBar({
           )}
         </div>
 
-        {/* Strategy Selector */}
-        <div className="flex items-center gap-1">
+        {/* Strategy Multi-Select */}
+        <div className="flex items-center gap-1 flex-wrap">
           <select
-            value={selectedStrategy}
-            onChange={(e) => onStrategyChange(e.target.value)}
+            value=""
+            onChange={(e) => {
+              const name = e.target.value;
+              if (name && !selectedStrategies.includes(name)) {
+                onStrategiesChange([...selectedStrategies, name]);
+              }
+            }}
             className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue cursor-pointer"
           >
-            <option value="">Strategy...</option>
-            {strategies.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name}
-              </option>
+            <option value="">+ Strategy…</option>
+            {strategies.filter((s) => !selectedStrategies.includes(s.name)).map((s) => (
+              <option key={s.name} value={s.name}>{s.name}</option>
             ))}
           </select>
+
+          {/* Strategy chips */}
+          {selectedStrategies.map((name, i) => {
+            const color = STRATEGY_COLORS[i % STRATEGY_COLORS.length];
+            return (
+              <span
+                key={name}
+                className="inline-flex items-center text-xs px-2 py-0.5 rounded border"
+                style={{ color, borderColor: color + "50", backgroundColor: color + "18" }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: color }} />
+                {name}
+                <button
+                  onClick={() => onStrategiesChange(selectedStrategies.filter((s) => s !== name))}
+                  className="ml-1.5 opacity-60 hover:opacity-100 cursor-pointer"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            );
+          })}
 
           {/* Create Strategy */}
           <button
@@ -296,14 +327,14 @@ export default function BacktestConfigBar({
             title="Create Strategy"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
             </svg>
           </button>
 
           {/* Delete Strategy */}
           {canDelete && (
             <button
-              onClick={() => onDeleteStrategy(selectedStrategy)}
+              onClick={() => onDeleteStrategy(selectedStrategies[0])}
               className="p-1.5 text-tv-muted hover:text-tv-red hover:bg-tv-panel rounded transition cursor-pointer"
               title="Delete Strategy"
             >

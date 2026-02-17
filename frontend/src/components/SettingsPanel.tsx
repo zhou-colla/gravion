@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { AppSettings } from "../types/stock";
 
 interface SettingsPanelProps {
@@ -9,12 +9,13 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ settings, onSettingsChanged }: SettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [saving, setSaving] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
 
-  const saveSettings = async (updated: Partial<AppSettings>) => {
+  const saveSettings = useCallback(async (updated: Partial<AppSettings>) => {
     setSaving(true);
     try {
       const res = await fetch("http://localhost:8000/api/settings", {
@@ -37,7 +38,12 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
     } finally {
       setSaving(false);
     }
-  };
+  }, [onSettingsChanged]);
+
+  const debouncedSave = useCallback((patch: Partial<AppSettings>) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => saveSettings(patch), 800);
+  }, [saveSettings]);
 
   const handleDataSourceChange = (value: string) => {
     const ds = value as AppSettings["data_source"];
@@ -47,12 +53,17 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
 
   const handleStartDateChange = (value: string) => {
     setLocalSettings((prev) => ({ ...prev, global_start_date: value }));
-    saveSettings({ global_start_date: value });
+    // Only save if it's a complete date (YYYY-MM-DD) or empty
+    if (!value || /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      debouncedSave({ global_start_date: value });
+    }
   };
 
   const handleEndDateChange = (value: string) => {
     setLocalSettings((prev) => ({ ...prev, global_end_date: value }));
-    saveSettings({ global_end_date: value });
+    if (!value || /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      debouncedSave({ global_end_date: value });
+    }
   };
 
   const clearDates = () => {

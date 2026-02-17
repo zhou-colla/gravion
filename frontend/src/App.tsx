@@ -51,9 +51,11 @@ export default function App() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
-  const [scannerStrategy, setScannerStrategy] = useState("");
+  const [scannerStrategies, setScannerStrategies] = useState<string[]>([]);
+  const [comparisonStrategies, setComparisonStrategies] = useState<string[]>([]);
   const [filters, setFilters] = useState<FilterInfo[]>([]);
-  const [activeFilter, setActiveFilter] = useState("");
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [filterOperator, setFilterOperator] = useState<"AND" | "OR">("AND");
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [showFilterBuilder, setShowFilterBuilder] = useState(false);
 
@@ -161,8 +163,13 @@ export default function App() {
     try {
       const sourceBody = getSourceBody();
       const body: Record<string, unknown> = { ...(sourceBody || {}) };
-      if (scannerStrategy) body.strategy = scannerStrategy;
-      if (activeFilter) body.filter = activeFilter;
+      // Primary signal strategy (first selected)
+      if (scannerStrategies.length > 0) body.strategy = scannerStrategies[0];
+      // Comparison strategies (all selected, for multi-column view)
+      if (scannerStrategies.length > 0) body.strategies = scannerStrategies;
+      // Filters
+      if (activeFilters.length > 0) body.filters = activeFilters;
+      if (activeFilters.length > 1) body.filter_operator = filterOperator;
       const res = await fetch("http://localhost:8000/api/screen", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,6 +179,7 @@ export default function App() {
       if (json.success && json.data) {
         setStocks(json.data);
         setFilterTags(json.filter_tags || []);
+        setComparisonStrategies(json.comparison_strategies || []);
         setBackendStatus("connected");
       } else {
         setError(json.error || "Screen returned no data");
@@ -257,7 +265,7 @@ export default function App() {
       if (json.success) {
         setShowFilterBuilder(false);
         await loadFilters();
-        setActiveFilter(json.name);
+        setActiveFilters((prev) => [...prev, json.name]);
       }
     } catch (e) {
       console.error("Failed to save filter:", e);
@@ -356,8 +364,8 @@ export default function App() {
           <div className="h-6 w-px bg-tv-border" />
           <StrategySelector
             strategies={strategies}
-            selectedStrategy={scannerStrategy}
-            onStrategyChange={setScannerStrategy}
+            selectedStrategies={scannerStrategies}
+            onStrategiesChange={setScannerStrategies}
           />
         </div>
 
@@ -484,15 +492,20 @@ export default function App() {
               <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-3 bg-tv-base text-xs shrink-0">
                 <span className="text-tv-text font-bold shrink-0">Results: {stocks.length}</span>
                 <div className="h-4 w-px bg-tv-border" />
-                {/* Filter selector */}
-                <div className="flex items-center space-x-1.5 shrink-0">
+                {/* Filter selector + chips */}
+                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                   <select
-                    value={activeFilter}
-                    onChange={(e) => setActiveFilter(e.target.value)}
+                    value=""
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      if (name && !activeFilters.includes(name)) {
+                        setActiveFilters((prev) => [...prev, name]);
+                      }
+                    }}
                     className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-0.5 outline-none focus:border-tv-blue cursor-pointer"
                   >
-                    <option value="">No Filter</option>
-                    {filters.map((f) => (
+                    <option value="">+ Add Filter</option>
+                    {filters.filter((f) => !activeFilters.includes(f.name)).map((f) => (
                       <option key={f.name} value={f.name}>{f.name}</option>
                     ))}
                   </select>
@@ -505,26 +518,51 @@ export default function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   </button>
-                </div>
-                {/* Active filter condition tags */}
-                {filterTags.length > 0 && (
-                  <div className="flex items-center space-x-1 overflow-x-auto">
-                    {filterTags.map((tag, i) => (
-                      <span key={i} className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20 whitespace-nowrap shrink-0">
-                        {tag}
-                      </span>
-                    ))}
+                  {/* Active filter chips */}
+                  {activeFilters.map((name, i) => (
+                    <span key={name} className="flex items-center space-x-1 bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20 whitespace-nowrap shrink-0">
+                      {i > 0 && (
+                        <button
+                          onClick={() => setFilterOperator((prev) => prev === "AND" ? "OR" : "AND")}
+                          className="text-[9px] text-tv-blue/60 hover:text-tv-blue mr-1 cursor-pointer font-bold"
+                          title="Toggle AND/OR"
+                        >
+                          {filterOperator}
+                        </button>
+                      )}
+                      <span>{name}</span>
+                      <button
+                        onClick={() => setActiveFilters((prev) => prev.filter((f) => f !== name))}
+                        className="text-tv-blue/60 hover:text-tv-blue cursor-pointer ml-0.5"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                  {/* Condition tags from last screen */}
+                  {filterTags.length > 0 && activeFilters.length > 0 && (
+                    <div className="flex items-center space-x-1">
+                      {filterTags.map((tag, i) => (
+                        <span key={i} className="bg-tv-panel text-tv-muted px-2 py-0.5 rounded border border-tv-border whitespace-nowrap shrink-0 text-[10px]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {activeFilters.length > 0 && (
                     <button
-                      onClick={() => { setActiveFilter(""); setFilterTags([]); }}
-                      className="text-tv-muted hover:text-tv-red transition cursor-pointer shrink-0 ml-1"
-                      title="Clear filter"
+                      onClick={() => { setActiveFilters([]); setFilterTags([]); }}
+                      className="text-tv-muted hover:text-tv-red transition cursor-pointer shrink-0"
+                      title="Clear all filters"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
                 {error && <span className="text-tv-red ml-2 shrink-0">{error}</span>}
                 <div className="ml-auto flex items-center space-x-4 text-tv-muted shrink-0">
                   <ExportButton stocks={stocks} disabled={isBusy} />
@@ -621,6 +659,7 @@ export default function App() {
                       stocks={stocks}
                       selectedSymbol={selectedSymbol}
                       onSelectStock={loadStockDetail}
+                      comparisonStrategies={comparisonStrategies}
                     />
                   )}
                 </div>

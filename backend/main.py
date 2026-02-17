@@ -119,8 +119,15 @@ class FetchRequest(BaseModel):
 class ScreenRequest(BaseModel):
     portfolio_id: Optional[int] = None
     symbols: Optional[list[str]] = None
+    # Single strategy (primary signal column)
     strategy: Optional[str] = None
-    filter: Optional[str] = None  # name of filter to apply
+    # Multiple strategies for side-by-side comparison
+    strategies: Optional[list[str]] = None
+    # Single filter (legacy)
+    filter: Optional[str] = None
+    # Multiple filters with AND/OR logic between them
+    filters: Optional[list[str]] = None
+    filter_operator: str = "AND"  # "AND" or "OR"
 
 
 @app.get("/api/health")
@@ -330,54 +337,96 @@ async def screen_stocks(body: Optional[ScreenRequest] = None):
         data_source = stock_db.get_setting("data_source") or "yahoo_finance"
         source_label = "Yahoo Finance (yfinance)" if data_source == "yahoo_finance" else "Moomoo OpenD"
 
-        # Resolve strategy for signal computation
+        # Resolve primary strategy + comparison strategies
         screen_strategy = None
         if body and body.strategy:
             screen_strategy = strategy_loader.get(body.strategy)
 
-        # Resolve active filter
-        active_filter = None
-        active_filter_conditions = []
-        if body and body.filter:
-            active_filter = filter_registry.get(body.filter)
-            if active_filter:
-                active_filter_conditions = active_filter.get("conditions", [])
+        comparison_strategies: list = []
+        if body and body.strategies:
+            for sname in body.strategies:
+                s = strategy_loader.get(sname)
+                if s:
+                    comparison_strategies.append(s)
+
+        # Resolve filters — merge legacy `filter` and new `filters` list
+        filter_names: list[str] = []
+        if body:
+            if body.filters:
+                filter_names = body.filters
+            elif body.filter:
+                filter_names = [body.filter]
+        filter_operator = (body.filter_operator if body else "AND") or "AND"
+
+        # Resolve filter conditions and compute per-filter tags
+        filter_conditions_list: list[list[dict]] = []
+        all_filter_tags: list[str] = []
+        for fname in filter_names:
+            f = filter_registry.get(fname)
+            if f:
+                conds = f.get("conditions", [])
+                filter_conditions_list.append(conds)
+                tags = [condition_label(c) for c in conds]
+                all_filter_tags.extend(tags)
 
         results = []
         for stock in stocks:
-            # Compute signal
-            if screen_strategy is not None:
-                history = stock_db.get_stock_history(stock["symbol"])
-                if history and len(history) >= 2:
-                    df = pd.DataFrame(history)
-                    try:
-                        stock["signal"] = screen_strategy.compute_intensity(df)
-                    except Exception:
-                        stock["signal"] = compute_signal(stock)
-                else:
+            sym = stock["symbol"]
+
+            # Load history once per stock (shared across signal + filter evaluation)
+            history = None
+            need_history = screen_strategy is not None or comparison_strategies or filter_conditions_list
+            if need_history:
+                history = stock_db.get_stock_history(sym)
+
+            # Primary signal
+            if screen_strategy is not None and history and len(history) >= 2:
+                df = pd.DataFrame(history)
+                try:
+                    stock["signal"] = screen_strategy.compute_intensity(df)
+                except Exception:
                     stock["signal"] = compute_signal(stock)
             else:
                 stock["signal"] = compute_signal(stock)
+
+            # Per-strategy comparison signals
+            if comparison_strategies and history and len(history) >= 2:
+                df = pd.DataFrame(history)
+                signals: dict[str, str] = {}
+                for cs in comparison_strategies:
+                    try:
+                        signals[cs.name] = cs.compute_intensity(df)
+                    except Exception:
+                        signals[cs.name] = "NEUTRAL"
+                stock["signals"] = signals
+            else:
+                stock["signals"] = {}
+
             stock["yoy_growth"] = None
 
-            # Apply filter if specified
-            if active_filter_conditions:
-                history = stock_db.get_stock_history(stock["symbol"])
-                if not evaluate_filter(history, active_filter_conditions):
-                    continue  # Skip stocks that don't pass the filter
+            # Apply filters
+            if filter_conditions_list:
+                results_per_filter = []
+                for conds in filter_conditions_list:
+                    results_per_filter.append(evaluate_filter(history or [], conds))
+                if filter_operator.upper() == "OR":
+                    passes = any(results_per_filter)
+                else:
+                    passes = all(results_per_filter)
+                if not passes:
+                    continue
 
             results.append(stock)
-
-        # Build active filter tag labels for the frontend
-        filter_tags = [condition_label(c) for c in active_filter_conditions]
 
         return {
             "success": True,
             "data": results,
             "count": len(results),
             "source": source_label,
-            "active_filter": body.filter if body and body.filter else None,
-            "filter_tags": filter_tags,
+            "active_filters": filter_names,
+            "filter_operator": filter_operator,
+            "filter_tags": all_filter_tags,
+            "comparison_strategies": [cs.name for cs in comparison_strategies],
         }
 
     except Exception as e:
@@ -804,6 +853,72 @@ async def delete_strategy(name: str):
     if strategy_loader.remove(name):
         return {"success": True}
     return {"success": False, "error": f"Strategy '{name}' not found"}
+
+
+class OptimizeRequest(BaseModel):
+    strategy_name: str
+    param_sweeps: list[dict]  # [{param: str, values: [v1, v2, ...]}]
+    start_date: str | None = None
+    end_date: str | None = None
+    period: str | None = None
+    initial_capital: float = 10000.0
+
+
+@app.post("/api/backtest/optimize/{symbol}")
+async def optimize_backtest(symbol: str, body: OptimizeRequest):
+    """
+    Run a parameter sweep backtest for a single symbol.
+    Tries every combination of param_sweeps values (cartesian product).
+    Returns results sorted by total_return_pct descending.
+    """
+    try:
+        import itertools
+        symbol = symbol.upper()
+
+        start_date, end_date = resolve_date_range(body.start_date, body.end_date, body.period)
+        ensure_history(symbol, start_date, end_date)
+        history = stock_db.get_stock_history_range(symbol, start_date, end_date)
+        if not history:
+            return {"success": False, "error": f"No historical data for {symbol}"}
+
+        df = pd.DataFrame(history)
+
+        param_names = [s["param"] for s in body.param_sweeps]
+        param_value_lists = [s["values"] for s in body.param_sweeps]
+
+        results = []
+        for combo in itertools.product(*param_value_lists):
+            params = dict(zip(param_names, combo))
+            strategy = strategy_loader.instantiate_with_params(body.strategy_name, params)
+            if strategy is None:
+                continue
+            try:
+                result = run_backtest(strategy, df, initial_capital=body.initial_capital)
+                results.append({
+                    "params": params,
+                    "total_return_pct": result.total_return_pct,
+                    "win_rate_pct": result.win_rate_pct,
+                    "profit_factor": result.profit_factor,
+                    "max_drawdown_pct": result.max_drawdown_pct,
+                    "trade_count": len(result.trades),
+                })
+            except Exception as e:
+                results.append({"params": params, "error": str(e)})
+
+        results.sort(key=lambda r: r.get("total_return_pct", float("-inf")), reverse=True)
+
+        return {
+            "success": True,
+            "symbol": symbol,
+            "strategy_name": body.strategy_name,
+            "date_range": {"start": start_date, "end": end_date},
+            "combinations_tested": len(results),
+            "results": results,
+        }
+
+    except Exception as e:
+        print(f"Optimize failed for {symbol}: {e}")
+        return {"success": False, "error": str(e)}
 
 
 class SaveFilterRequest(BaseModel):

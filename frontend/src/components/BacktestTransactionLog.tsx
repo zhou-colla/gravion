@@ -2,6 +2,7 @@ import type { BatchBacktestResult } from "../types/stock";
 
 interface BacktestTransactionLogProps {
   result: BatchBacktestResult;
+  strategyName?: string;
   onClose: () => void;
 }
 
@@ -14,12 +15,17 @@ function MetricCard({ label, value, color }: { label: string; value: string; col
   );
 }
 
-export default function BacktestTransactionLog({ result, onClose }: BacktestTransactionLogProps) {
+export default function BacktestTransactionLog({ result, strategyName, onClose }: BacktestTransactionLogProps) {
   return (
     <aside className="w-[280px] border-l border-tv-border bg-tv-base flex flex-col shrink-0 overflow-hidden">
       {/* Header */}
       <div className="h-9 border-b border-tv-border flex items-center px-4 justify-between shrink-0">
-        <span className="font-bold text-tv-text">{result.symbol}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-bold text-tv-text truncate">{result.symbol}</span>
+          {strategyName && (
+            <span className="text-[10px] text-tv-muted truncate">· {strategyName}</span>
+          )}
+        </div>
         <button
           onClick={onClose}
           className="text-tv-muted hover:text-tv-text transition p-1 cursor-pointer"

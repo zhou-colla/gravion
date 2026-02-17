@@ -8,6 +8,13 @@ from .rsi_mean_reversion import RSIMeanReversionStrategy
 from .price_change_momentum import PriceChangeMomentumStrategy
 
 
+BUILTIN_CLASSES: dict[str, type] = {
+    "Golden Cross": GoldenCrossStrategy,
+    "RSI Mean Reversion": RSIMeanReversionStrategy,
+    "Price Change Momentum": PriceChangeMomentumStrategy,
+}
+
+
 class StrategyLoader:
     def __init__(self) -> None:
         self._strategies: dict[str, BaseStrategy] = {}
@@ -17,6 +24,17 @@ class StrategyLoader:
         for cls in [GoldenCrossStrategy, RSIMeanReversionStrategy, PriceChangeMomentumStrategy]:
             instance = cls()
             self._strategies[instance.name] = instance
+
+    def instantiate_with_params(self, name: str, params: dict) -> BaseStrategy | None:
+        """Create a fresh strategy instance with custom parameters (for optimizer)."""
+        cls = BUILTIN_CLASSES.get(name)
+        if cls is None:
+            return None
+        try:
+            return cls(**params)
+        except Exception as e:
+            print(f"Failed to instantiate {name} with params {params}: {e}")
+            return None
 
     def register(self, strategy: BaseStrategy) -> None:
         self._strategies[strategy.name] = strategy

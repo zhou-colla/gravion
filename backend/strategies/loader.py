@@ -57,6 +57,7 @@ class StrategyLoader:
                 "name": s.name,
                 "description": s.description,
                 "parameters": s.parameters,
+                "param_meta": s.param_meta,
                 "builtin": name in builtin_names,
             })
         return result

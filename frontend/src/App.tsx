@@ -370,10 +370,10 @@ export default function App() {
         </div>
 
         <div className="flex items-center space-x-6">
-          {/* Realtime Fetch Toggle */}
+          {/* Realtime Toggle */}
           <div className="flex items-center cursor-pointer group">
             <span className="text-xs text-tv-muted font-medium mr-3 group-hover:text-tv-text transition">
-              Realtime Fetch
+              Realtime
             </span>
             <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
               <input
@@ -705,6 +705,7 @@ export default function App() {
             onOpenVisualBuilder={() => setShowVisualBuilder(true)}
             onStrategiesChanged={loadStrategies}
             portfolios={portfolios}
+            realtime={realtimeFetch}
           />
         ) : activeView === "portfolios" ? (
           <PortfolioManager

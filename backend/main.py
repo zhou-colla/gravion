@@ -830,6 +830,7 @@ class BatchBacktestRequest(BaseModel):
     end_date: str | None = None
     period: str | None = None
     initial_capital_per_stock: float = 10000
+    realtime: bool = False  # False = cache-first (no yfinance calls)
 
 
 class SaveStrategyRequest(BaseModel):
@@ -862,6 +863,7 @@ class OptimizeRequest(BaseModel):
     end_date: str | None = None
     period: str | None = None
     initial_capital: float = 10000.0
+    realtime: bool = False  # False = cache-first (no yfinance calls)
 
 
 @app.post("/api/backtest/optimize/{symbol}")
@@ -876,10 +878,15 @@ async def optimize_backtest(symbol: str, body: OptimizeRequest):
         symbol = symbol.upper()
 
         start_date, end_date = resolve_date_range(body.start_date, body.end_date, body.period)
-        ensure_history(symbol, start_date, end_date)
+        if body.realtime:
+            await asyncio.sleep(0.25)
+            ensure_history(symbol, start_date, end_date)
         history = stock_db.get_stock_history_range(symbol, start_date, end_date)
         if not history:
-            return {"success": False, "error": f"No historical data for {symbol}"}
+            history = stock_db.get_stock_history(symbol) or []
+        if not history:
+            hint = "" if body.realtime else " (enable Realtime to fetch fresh data)"
+            return {"success": False, "error": f"No historical data for {symbol}{hint}"}
 
         df = pd.DataFrame(history)
 
@@ -983,19 +990,41 @@ async def batch_backtest(body: BatchBacktestRequest):
         if not symbols:
             return {"success": False, "error": "No symbols provided. Use symbols list or portfolio_id."}
 
+        import asyncio as _asyncio
+
         start_date, end_date = resolve_date_range(body.start_date, body.end_date, body.period)
 
         results = []
         errors = []
 
-        for sym in symbols:
+        for i, sym in enumerate(symbols):
             sym = sym.upper()
             try:
-                ensure_history(sym, start_date, end_date)
+                from_cache = True
+
+                if body.realtime:
+                    # Throttle to avoid yfinance rate limits (250ms between requests)
+                    if i > 0:
+                        await _asyncio.sleep(0.25)
+                    fetched = ensure_history(sym, start_date, end_date)
+                    from_cache = not fetched
+
+                # Try requested date range first
                 history = stock_db.get_stock_history_range(sym, start_date, end_date)
+
+                # Fallback: use all cached history (ignoring date range)
                 if not history:
-                    errors.append({"symbol": sym, "error": "No historical data available"})
+                    history = stock_db.get_stock_history(sym)
+                    if history:
+                        from_cache = True  # definitely from cache
+
+                if not history:
+                    hint = "" if body.realtime else " (enable Realtime to fetch fresh data)"
+                    errors.append({"symbol": sym, "error": f"No historical data available{hint}"})
                     continue
+
+                actual_start = history[0]["date"]
+                actual_end = history[-1]["date"]
 
                 df = pd.DataFrame(history)
                 result = run_backtest(strategy, df, initial_capital=body.initial_capital_per_stock)
@@ -1013,6 +1042,9 @@ async def batch_backtest(body: BatchBacktestRequest):
                         for t in result.trades
                     ],
                     "equity_curve": result.equity_curve,
+                    "data_start": actual_start,
+                    "data_end": actual_end,
+                    "from_cache": from_cache,
                 })
             except Exception as e:
                 errors.append({"symbol": sym, "error": str(e)})

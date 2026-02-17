@@ -42,14 +42,34 @@ export interface Fundamentals {
   fifty_two_week_low: number | null;
 }
 
+export interface MacdDataPoint {
+  time: string;
+  macd: number;
+  signal: number;
+  histogram: number;
+}
+
+export interface BollingerDataPoint {
+  time: string;
+  upper: number;
+  middle: number;
+  lower: number;
+}
+
 export interface StockDetail {
   success: boolean;
   symbol: string;
   company_name: string;
+  from_cache: boolean;
+  data_points: number;
   ohlc: OhlcDataPoint[];
   ma50: LineDataPoint[];
   ma100: LineDataPoint[];
   volume: LineDataPoint[];
+  rsi: LineDataPoint[];
+  current_rsi: number | null;
+  macd: MacdDataPoint[];
+  bollinger: BollingerDataPoint[];
   fundamentals: Fundamentals;
 }
 
@@ -150,4 +170,17 @@ export interface Portfolio {
 
 export interface PortfolioDetail extends Portfolio {
   symbols: string[];
+}
+
+export interface FilterCondition {
+  indicator: "price" | "ma50" | "ma100" | "rsi" | "change_pct" | "volume";
+  comparator: ">" | "<" | ">=" | "<=";
+  value: number | "price" | "ma50" | "ma100" | "rsi" | "change_pct" | "volume";
+}
+
+export interface FilterInfo {
+  name: string;
+  description: string;
+  builtin: boolean;
+  conditions: FilterCondition[];
 }

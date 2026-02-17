@@ -74,10 +74,20 @@ export interface StockDetail {
   fundamentals: Fundamentals;
 }
 
+export interface ParamMeta {
+  label: string;
+  type: "int" | "float";
+  default: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
 export interface StrategyInfo {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  param_meta?: Record<string, ParamMeta>;
   builtin: boolean;
 }
 
@@ -141,6 +151,9 @@ export interface BatchBacktestResult {
   trade_count: number;
   trades: TradeEntry[];
   equity_curve: EquityCurvePoint[];
+  data_start?: string;
+  data_end?: string;
+  from_cache?: boolean;
 }
 
 export interface BatchBacktestResponse {

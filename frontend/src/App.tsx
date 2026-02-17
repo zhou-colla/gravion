@@ -11,6 +11,8 @@ import PortfolioManager from "./components/PortfolioManager";
 import SourceSelector from "./components/SourceSelector";
 import type { SourceSelection } from "./components/SourceSelector";
 import StrategySelector from "./components/StrategySelector";
+import FilterBuilder from "./components/FilterBuilder";
+import type { FilterInfo } from "./types/stock";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(0) + "MB";
@@ -50,6 +52,10 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
   const [scannerStrategy, setScannerStrategy] = useState("");
+  const [filters, setFilters] = useState<FilterInfo[]>([]);
+  const [activeFilter, setActiveFilter] = useState("");
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [showFilterBuilder, setShowFilterBuilder] = useState(false);
 
   const checkHealth = async () => {
     try {
@@ -115,6 +121,14 @@ export default function App() {
     }
   };
 
+  const loadFilters = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/filters");
+      const json = await res.json();
+      if (json.filters) setFilters(json.filters);
+    } catch { /* silent */ }
+  };
+
   const getSourceBody = (): Record<string, unknown> | undefined => {
     if (scannerSource.type === "portfolio" && scannerSource.portfolioId > 0) {
       return { portfolio_id: scannerSource.portfolioId };
@@ -146,17 +160,18 @@ export default function App() {
     setError("");
     try {
       const sourceBody = getSourceBody();
-      const body = scannerStrategy
-        ? { ...(sourceBody || {}), strategy: scannerStrategy }
-        : sourceBody;
+      const body: Record<string, unknown> = { ...(sourceBody || {}) };
+      if (scannerStrategy) body.strategy = scannerStrategy;
+      if (activeFilter) body.filter = activeFilter;
       const res = await fetch("http://localhost:8000/api/screen", {
         method: "POST",
-        headers: body ? { "Content-Type": "application/json" } : {},
-        body: body ? JSON.stringify(body) : undefined,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (json.success && json.data) {
         setStocks(json.data);
+        setFilterTags(json.filter_tags || []);
         setBackendStatus("connected");
       } else {
         setError(json.error || "Screen returned no data");
@@ -231,9 +246,29 @@ export default function App() {
     }
   };
 
+  const saveFilter = async (filter: { name: string; description: string; conditions: FilterInfo["conditions"] }) => {
+    try {
+      const res = await fetch("http://localhost:8000/api/filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(filter),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShowFilterBuilder(false);
+        await loadFilters();
+        setActiveFilter(json.name);
+      }
+    } catch (e) {
+      console.error("Failed to save filter:", e);
+    }
+  };
+
   const handleTradeClick = (trade: TradeEntry) => {
     setHighlightedTrade(trade);
   };
+
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const loadStockDetail = async (symbol: string) => {
     // Cancel any in-flight request
@@ -244,23 +279,33 @@ export default function App() {
 
     setSelectedSymbol(symbol);
     setDetailLoading(true);
-    setStockDetail(null);
-    // Clear backtest state on stock change
+    setDetailError(null);
+    // Keep stockDetail visible (stale) while loading — don't null it out
     setBacktestResult(null);
     setHighlightedTrade(null);
     setBacktestLoading(false);
 
     try {
-      const res = await fetch(`http://localhost:8000/api/stock/${symbol}/detail`, {
+      const params = realtimeFetch ? "?realtime=true" : "";
+      const res = await fetch(`http://localhost:8000/api/stock/${symbol}/detail${params}`, {
         signal: controller.signal,
       });
       const json = await res.json();
-      if (!controller.signal.aborted && json.success) {
-        setStockDetail(json);
+      if (!controller.signal.aborted) {
+        if (json.success) {
+          setStockDetail(json);
+          setDetailError(null);
+        } else {
+          setDetailError(json.error || "Failed to load chart data");
+          // Keep previous stockDetail if available so chart doesn't disappear
+        }
       }
     } catch (e: any) {
       if (e.name !== "AbortError") {
         console.error("Failed to load detail:", e);
+        if (!controller.signal.aborted) {
+          setDetailError("Connection error — is the backend running?");
+        }
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -275,6 +320,7 @@ export default function App() {
     setSelectedSymbol(null);
     setStockDetail(null);
     setDetailLoading(false);
+    setDetailError(null);
     setBacktestResult(null);
     setHighlightedTrade(null);
     setBacktestLoading(false);
@@ -286,6 +332,7 @@ export default function App() {
     loadStrategies();
     loadPortfolios();
     loadSettings();
+    loadFilters();
   }, []);
 
   const isBusy = loading || fetching;
@@ -434,21 +481,52 @@ export default function App() {
           <>
             <main className="flex-1 flex flex-col bg-tv-base relative min-w-0">
               {/* Filter Bar */}
-              <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-4 bg-tv-base text-xs shrink-0">
-                <span className="text-tv-text font-bold">Results: {stocks.length}</span>
+              <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-3 bg-tv-base text-xs shrink-0">
+                <span className="text-tv-text font-bold shrink-0">Results: {stocks.length}</span>
                 <div className="h-4 w-px bg-tv-border" />
-                {stocks.length > 0 && (
-                  <div className="flex space-x-2">
-                    <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
-                      Price &gt; 50MA
-                    </span>
-                    <span className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20">
-                      50MA &gt; 100MA
-                    </span>
+                {/* Filter selector */}
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <select
+                    value={activeFilter}
+                    onChange={(e) => setActiveFilter(e.target.value)}
+                    className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-0.5 outline-none focus:border-tv-blue cursor-pointer"
+                  >
+                    <option value="">No Filter</option>
+                    {filters.map((f) => (
+                      <option key={f.name} value={f.name}>{f.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setShowFilterBuilder(true)}
+                    className="text-tv-muted hover:text-tv-blue transition cursor-pointer p-0.5"
+                    title="Build custom filter"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Active filter condition tags */}
+                {filterTags.length > 0 && (
+                  <div className="flex items-center space-x-1 overflow-x-auto">
+                    {filterTags.map((tag, i) => (
+                      <span key={i} className="bg-tv-blue/10 text-tv-blue px-2 py-0.5 rounded border border-tv-blue/20 whitespace-nowrap shrink-0">
+                        {tag}
+                      </span>
+                    ))}
+                    <button
+                      onClick={() => { setActiveFilter(""); setFilterTags([]); }}
+                      className="text-tv-muted hover:text-tv-red transition cursor-pointer shrink-0 ml-1"
+                      title="Clear filter"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 )}
-                {error && <span className="text-tv-red ml-2">{error}</span>}
-                <div className="ml-auto flex items-center space-x-4 text-tv-muted">
+                {error && <span className="text-tv-red ml-2 shrink-0">{error}</span>}
+                <div className="ml-auto flex items-center space-x-4 text-tv-muted shrink-0">
                   <ExportButton stocks={stocks} disabled={isBusy} />
                   <div className="h-4 w-px bg-tv-border" />
                   <span>
@@ -459,8 +537,8 @@ export default function App() {
 
               {/* Chart + Grid area */}
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Chart Panel (only visible when a stock is selected) */}
-                {showDetail && stockDetail && !detailLoading && (
+                {/* Chart Panel — visible whenever a stock is selected and we have data */}
+                {showDetail && stockDetail && (
                   <ChartPanel
                     detail={stockDetail}
                     onClose={closeDetail}
@@ -470,15 +548,33 @@ export default function App() {
                     onRunBacktest={runBacktest}
                     backtestLoading={backtestLoading}
                     highlightedTrade={highlightedTrade}
+                    isLoading={detailLoading}
+                    loadingSymbol={selectedSymbol ?? undefined}
                   />
                 )}
 
-                {/* Loading state for chart */}
-                {showDetail && detailLoading && (
+                {/* Loading state — no previous chart to show yet */}
+                {showDetail && !stockDetail && detailLoading && (
                   <div className="border-b border-tv-border flex items-center justify-center" style={{ height: "45%" }}>
                     <div className="text-center">
                       <div className="inline-block w-6 h-6 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-2" />
                       <p className="text-tv-muted text-xs">Loading chart for {selectedSymbol}...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error state — data fetch failed and no cache to show */}
+                {showDetail && !stockDetail && !detailLoading && detailError && (
+                  <div className="border-b border-tv-border flex items-center justify-center" style={{ height: "45%" }}>
+                    <div className="text-center px-6">
+                      <div className="w-10 h-10 bg-tv-red/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <svg className="w-5 h-5 text-tv-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <p className="text-tv-red text-xs font-medium mb-1">Chart unavailable</p>
+                      <p className="text-tv-muted text-xs">{detailError}</p>
+                      <p className="text-tv-muted text-xs mt-2">Enable <strong className="text-tv-text">Realtime Fetch</strong> and click <strong className="text-tv-blue">Fetch &amp; Run</strong> to download data.</p>
                     </div>
                   </div>
                 )}
@@ -589,6 +685,13 @@ export default function App() {
         <VisualBuilder
           onSave={saveVisualStrategy}
           onClose={() => setShowVisualBuilder(false)}
+        />
+      )}
+
+      {showFilterBuilder && (
+        <FilterBuilder
+          onSave={saveFilter}
+          onClose={() => setShowFilterBuilder(false)}
         />
       )}
     </div>

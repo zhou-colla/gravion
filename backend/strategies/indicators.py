@@ -26,3 +26,22 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
 def daily_change_pct(series: pd.Series) -> pd.Series:
     """Percentage change from previous day."""
     return series.pct_change() * 100
+
+
+def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """MACD indicator. Returns (macd_line, signal_line, histogram)."""
+    ema_fast = ema(series, fast)
+    ema_slow = ema(series, slow)
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+def bollinger_bands(series: pd.Series, period: int = 20, num_std: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Bollinger Bands. Returns (upper, middle, lower)."""
+    middle = sma(series, period)
+    std = series.rolling(window=period, min_periods=period).std()
+    upper = middle + (std * num_std)
+    lower = middle - (std * num_std)
+    return upper, middle, lower

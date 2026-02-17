@@ -24,6 +24,14 @@ class RSIMeanReversionStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"rsi_period": self._rsi_period, "oversold": self._oversold, "overbought": self._overbought}
 
+    @property
+    def param_meta(self) -> dict[str, dict]:
+        return {
+            "rsi_period": {"label": "RSI Period", "type": "int", "default": 14, "min": 5, "max": 50, "step": 1},
+            "oversold": {"label": "Oversold Level", "type": "int", "default": 30, "min": 10, "max": 45, "step": 1},
+            "overbought": {"label": "Overbought Level", "type": "int", "default": 70, "min": 55, "max": 90, "step": 1},
+        }
+
     def compute_intensity(self, df: pd.DataFrame) -> str:
         rsi_vals = rsi(df["close"], self._rsi_period).dropna()
         if rsi_vals.empty:

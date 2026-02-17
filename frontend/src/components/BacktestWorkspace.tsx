@@ -18,6 +18,7 @@ interface BacktestWorkspaceProps {
   onOpenVisualBuilder: () => void;
   onStrategiesChanged: () => void;
   portfolios: Portfolio[];
+  realtime: boolean;
 }
 
 export interface StrategyRunResult {
@@ -32,6 +33,7 @@ export default function BacktestWorkspace({
   onOpenVisualBuilder,
   onStrategiesChanged,
   portfolios,
+  realtime,
 }: BacktestWorkspaceProps) {
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
@@ -76,7 +78,7 @@ export default function BacktestWorkspace({
     setSelectedResult(null);
 
     try {
-      const basePayload: Record<string, unknown> = { initial_capital_per_stock: 10000 };
+      const basePayload: Record<string, unknown> = { initial_capital_per_stock: 10000, realtime };
       if (sourceMode === "portfolio" && selectedPortfolioId) {
         basePayload.portfolio_id = selectedPortfolioId;
       } else {
@@ -176,7 +178,7 @@ export default function BacktestWorkspace({
       </div>
 
       {activeTab === "optimizer" ? (
-        <OptimizerPanel strategies={strategies} availableSymbols={availableSymbols} />
+        <OptimizerPanel strategies={strategies} availableSymbols={availableSymbols} realtime={realtime} />
       ) : (
         <>
           {/* Config Bar */}

@@ -11,6 +11,7 @@ export interface StockRow {
   last_fetched: string | null;
   timestamp: string;
   signal: string;
+  signals: Record<string, string>;
   yoy_growth: number | null;
 }
 
@@ -170,6 +171,31 @@ export interface Portfolio {
 
 export interface PortfolioDetail extends Portfolio {
   symbols: string[];
+}
+
+export interface OptimizeParamSweep {
+  param: string;
+  values: number[];
+}
+
+export interface OptimizeResult {
+  params: Record<string, number>;
+  total_return_pct: number;
+  win_rate_pct: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  trade_count: number;
+  error?: string;
+}
+
+export interface OptimizeResponse {
+  success: boolean;
+  symbol: string;
+  strategy_name: string;
+  date_range: { start: string; end: string };
+  combinations_tested: number;
+  results: OptimizeResult[];
+  error?: string;
 }
 
 export interface FilterCondition {

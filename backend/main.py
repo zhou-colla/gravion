@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+import asyncio
 
 from db import stock_db, NASDAQ_100_SYMBOLS
 from strategies.loader import strategy_loader
@@ -101,6 +102,7 @@ class SettingsUpdateRequest(BaseModel):
     data_source: Optional[str] = None
     global_start_date: Optional[str] = None
     global_end_date: Optional[str] = None
+    tushare_api_key: Optional[str] = None
 
 
 class CreatePortfolioRequest(BaseModel):
@@ -145,6 +147,7 @@ async def get_settings():
         "data_source": settings.get("data_source", "yahoo_finance"),
         "global_start_date": settings.get("global_start_date", ""),
         "global_end_date": settings.get("global_end_date", ""),
+        "tushare_api_key": settings.get("tushare_api_key"),
     }
 
 
@@ -156,12 +159,15 @@ async def update_settings(body: SettingsUpdateRequest):
         stock_db.set_setting("global_start_date", body.global_start_date)
     if body.global_end_date is not None:
         stock_db.set_setting("global_end_date", body.global_end_date)
+    if body.tushare_api_key is not None:
+        stock_db.set_setting("tushare_api_key", body.tushare_api_key)
     settings = stock_db.get_all_settings()
     return {
         "success": True,
         "data_source": settings.get("data_source", "yahoo_finance"),
         "global_start_date": settings.get("global_start_date", ""),
         "global_end_date": settings.get("global_end_date", ""),
+        "tushare_api_key": settings.get("tushare_api_key"),
     }
 
 
@@ -226,7 +232,6 @@ async def fetch_data(body: Optional[FetchRequest] = None):
         if data_source == "moomoo_opend":
             return {"success": False, "error": "Moomoo OpenD gateway is not configured. Please install and connect the Moomoo OpenD gateway first."}
 
-        import yfinance as yf
         from datetime import datetime
         import math
 
@@ -241,68 +246,187 @@ async def fetch_data(body: Optional[FetchRequest] = None):
             symbols = _get_system_portfolio_symbols()
 
         fetch_time = datetime.now().isoformat()
-
-        # Batch download: single HTTP call for all symbols
-        data = yf.download(symbols, period="2d", group_by="ticker", threads=True)
-
         fetched_count = 0
         errors = []
 
-        for symbol in symbols:
+        if data_source == "tushare":
+            # Tushare data source
             try:
-                # Extract per-symbol data from the multi-level DataFrame
-                if len(symbols) == 1:
-                    hist = data
-                else:
-                    hist = data[symbol]
+                import tushare as ts
+                
+                # Get Tushare API key from settings or use a placeholder
+                api_key = stock_db.get_setting("tushare_api_key")
+                if not api_key:
+                    return {"success": False, "error": "Tushare API key not configured. Please set tushare_api_key in settings."}
+                
+                pro = ts.pro_api(api_key)
+                
+                # Tushare has a limit of 6000 per request, so we need to paginate
+                limit = 6000
+                offset = 0
+                total_fetched = 0
+                
+                while True:
+                    # Fetch US stock list with pagination
+                    df = pro.us_basic(
+                        limit=limit,
+                        offset=offset
+                    )
+                    
+                    if df.empty:
+                        break
+                    
+                    # Process each stock
+                    for _, row in df.iterrows():
+                        symbol = row.get("ts_code", "")
+                        # Ensure symbol is a string before calling upper()
+                        if isinstance(symbol, float):
+                            symbol = str(symbol)
+                        symbol = symbol.upper()
+                        if not symbol:
+                            continue
+                        
+                        # Only process symbols in our list if provided
+                        if symbols and symbol not in symbols:
+                            continue
+                        
+                        try:
+                            # Get stock name from Tushare
+                            name = row.get("enname", symbol)
+                            if not name:
+                                name = symbol
+                            
+                            # Fetch price data using Tushare's US daily endpoint
+                            # Get today's date and yesterday's date
+                            from datetime import datetime, timedelta
+                            today = datetime.now().strftime("%Y%m%d")
+                            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+                            
+                            # Fetch daily price data for the last 2 days
+                            price_df = pro.us_daily(
+                                ts_code=symbol,
+                                start_date=yesterday,
+                                end_date=today
+                            )
+                            
+                            if price_df.empty:
+                                # No fallback - only use Tushare data
+                                errors.append(f"{symbol}: no price data from Tushare")
+                                continue
+                            else:
+                                # Sort by date descending to get the latest data first
+                                price_df = price_df.sort_values(by="trade_date", ascending=False)
+                                
+                                # Get the latest day's data
+                                latest_day = price_df.iloc[0]
+                                close_val = float(latest_day.get("close", 0))
+                                open_val = float(latest_day.get("open", 0))
+                                high_val = float(latest_day.get("high", 0))
+                                low_val = float(latest_day.get("low", 0))
+                                volume_val = int(latest_day.get("vol", 0))
+                                
+                                # Calculate daily change percent
+                                if len(price_df) >= 2:
+                                    prev_day = price_df.iloc[1]
+                                    prev_close = float(prev_day.get("close", 0))
+                                    if prev_close != 0:
+                                        change_pct = round(((close_val - prev_close) / prev_close) * 100, 2)
+                                    else:
+                                        change_pct = 0.0
+                                else:
+                                    change_pct = 0.0
+                            
+                            stock_db.save_stock_data(
+                                symbol=symbol,
+                                name=name,
+                                price=close_val,
+                                volume=volume_val,
+                                change_percent=change_pct,
+                                open_price=open_val,
+                                high_price=high_val,
+                                low_price=low_val,
+                                close_price=close_val,
+                                last_fetched=fetch_time,
+                            )
+                            fetched_count += 1
+                            total_fetched += 1
+                            
+                        except Exception as e:
+                            errors.append(f"{symbol}: {str(e)}")
+                    
+                    # Move to next page
+                    offset += limit
+                    
+                    # Break if we've fetched all requested symbols
+                    if symbols and total_fetched >= len(symbols):
+                        break
+                        
+            except Exception as e:
+                print(f"Tushare fetch failed: {e}")
+                return {"success": False, "error": f"Tushare API error: {str(e)}"}
+                
+        else:
+            # Default to yfinance
+            import yfinance as yf
+            
+            # Batch download: single HTTP call for all symbols
+            data = yf.download(symbols, period="2d", group_by="ticker", threads=True)
 
-                if hist.empty or hist["Close"].dropna().empty:
-                    errors.append(f"{symbol}: no data")
-                    continue
+            for symbol in symbols:
+                try:
+                    # Extract per-symbol data from the multi-level DataFrame
+                    if len(symbols) == 1:
+                        hist = data
+                    else:
+                        hist = data[symbol]
 
-                close_val = float(hist["Close"].dropna().iloc[-1])
-                open_val = float(hist["Open"].dropna().iloc[-1])
-                high_val = float(hist["High"].dropna().iloc[-1])
-                low_val = float(hist["Low"].dropna().iloc[-1])
-                volume_val = int(hist["Volume"].dropna().iloc[-1])
+                    if hist.empty or hist["Close"].dropna().empty:
+                        errors.append(f"{symbol}: no data")
+                        continue
 
-                # Calculate daily change percent
-                close_series = hist["Close"].dropna()
-                if len(close_series) >= 2:
-                    prev_close = float(close_series.iloc[-2])
-                    if prev_close != 0:
-                        change_pct = round(((close_val - prev_close) / prev_close) * 100, 2)
+                    close_val = float(hist["Close"].dropna().iloc[-1])
+                    open_val = float(hist["Open"].dropna().iloc[-1])
+                    high_val = float(hist["High"].dropna().iloc[-1])
+                    low_val = float(hist["Low"].dropna().iloc[-1])
+                    volume_val = int(hist["Volume"].dropna().iloc[-1])
+
+                    # Calculate daily change percent
+                    close_series = hist["Close"].dropna()
+                    if len(close_series) >= 2:
+                        prev_close = float(close_series.iloc[-2])
+                        if prev_close != 0:
+                            change_pct = round(((close_val - prev_close) / prev_close) * 100, 2)
+                        else:
+                            change_pct = 0.0
                     else:
                         change_pct = 0.0
-                else:
-                    change_pct = 0.0
 
-                # Skip NaN values
-                if math.isnan(close_val):
-                    errors.append(f"{symbol}: NaN price")
-                    continue
+                    # Skip NaN values
+                    if math.isnan(close_val):
+                        errors.append(f"{symbol}: NaN price")
+                        continue
 
-                stock_db.save_stock_data(
-                    symbol=symbol,
-                    name=symbol,  # Use symbol as name; enrichment comes later
-                    price=close_val,
-                    volume=volume_val,
-                    change_percent=change_pct,
-                    open_price=open_val,
-                    high_price=high_val,
-                    low_price=low_val,
-                    close_price=close_val,
-                    last_fetched=fetch_time,
-                )
-                fetched_count += 1
+                    stock_db.save_stock_data(
+                        symbol=symbol,
+                        name=symbol,  # Use symbol as name; enrichment comes later
+                        price=close_val,
+                        volume=volume_val,
+                        change_percent=change_pct,
+                        open_price=open_val,
+                        high_price=high_val,
+                        low_price=low_val,
+                        close_price=close_val,
+                        last_fetched=fetch_time,
+                    )
+                    fetched_count += 1
 
-            except Exception as e:
-                errors.append(f"{symbol}: {str(e)}")
+                except Exception as e:
+                    errors.append(f"{symbol}: {str(e)}")
 
         return {
             "success": True,
             "fetched": fetched_count,
-            "total": len(symbols),
+            "total": len(symbols) if symbols else fetched_count,
             "errors": len(errors),
             "error_details": errors[:10],
             "fetch_time": fetch_time,
@@ -335,7 +459,15 @@ async def screen_stocks(body: Optional[ScreenRequest] = None):
             stocks = stock_db.get_all_stocks()
 
         data_source = stock_db.get_setting("data_source") or "yahoo_finance"
-        source_label = "Yahoo Finance (yfinance)" if data_source == "yahoo_finance" else "Moomoo OpenD"
+        if data_source == "yahoo_finance":
+            source_label = "Yahoo Finance (yfinance)"
+        elif data_source == "moomoo_opend":
+            source_label = "Moomoo OpenD"
+        elif data_source == "tushare":
+            source_label = "Tushare"
+        else:
+            source_label = "Unknown"
+
 
         # Resolve primary strategy + comparison strategies
         screen_strategy = None

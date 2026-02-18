@@ -170,7 +170,7 @@ export interface EquityCurvePoint {
 }
 
 export interface AppSettings {
-  data_source: "yahoo_finance" | "moomoo_opend";
+  data_source: "yahoo_finance" | "moomoo_opend" | "tushare";
   global_start_date: string;
   global_end_date: string;
 }

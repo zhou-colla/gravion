@@ -186,3 +186,66 @@
 * **Feature:** **"Code-First" Development**.
 * **Workflow:** Drop a `.py` file into `gravion/strategies/`. The app auto-loads it.
 * **Power:** Full access to `pandas`, `numpy`, and `talib` for complex logic.
+
+---
+
+## Phase 5: Portfolio Management & Multi-Strategy Comparison (Weeks 9-10)
+**Goal:** Enable users to create custom portfolios and compare multiple strategies side-by-side.
+
+### 5.1 Portfolio Management
+* **Feature:** Create, rename, and delete custom portfolios.
+* **Feature:** Add/remove symbols from portfolios.
+* **UI:** Portfolio selector dropdown in the header.
+* **Endpoint:** `GET /api/portfolios`, `POST /api/portfolios`, `PUT /api/portfolios/{id}/symbols`.
+
+### 5.2 Multi-Strategy Comparison
+* **Feature:** Select multiple strategies for simultaneous evaluation.
+* **UI:** Strategy comparison table showing signals from different strategies for each stock.
+* **Endpoint:** `POST /api/screen` updated to accept multiple strategy names.
+
+---
+
+## Phase 6: Tushare Data Source Integration (Weeks 11-12)
+**Goal:** Add Tushare as a dedicated data source for Chinese and US stock data, with proper API key management and error handling.
+
+### 6.1 Tushare API Integration
+* **Deliverable:** Python backend integration with Tushare API using the `tushare` library.
+* **Feature:** `POST /api/fetch` endpoint updated to support Tushare as a data source.
+* **Data Source:** Tushare API for Chinese and US stock data.
+* **API Key Management:** Secure storage of Tushare API key in the database.
+
+### 6.2 Pagination & Rate Limit Handling
+* **Feature:** Pagination implementation to handle Tushare's 6000 record limit per request.
+* **Performance:** Efficient batch processing of stock data with proper rate limit handling.
+* **Error Handling:** Clear error messages for API key issues and rate limit exceeded errors.
+
+### 6.3 UI Updates for Tushare
+* **Feature:** Tushare added to the data source dropdown menu in settings.
+* **UI:** Tushare API key input field in settings page when Tushare is selected.
+* **Source Label:** "Tushare" displayed on the screener page when Tushare is the active data source.
+
+### 6.4 Chinese Stock Support
+* **Feature:** Ability to fetch and display Chinese stock data using Tushare.
+* **Symbol Format:** Support for Tushare's symbol format (e.g., `600519.SH` for Kweichow Moutai).
+* **Data Fields:** Fetch current price, volume, name, and other relevant fields for Chinese stocks.
+
+### 6.5 No-Fallback Policy
+* **Design Decision:** When Tushare is selected as the data source, no fallback to other data sources.
+* **Error Handling:** Clear error messages for symbols that Tushare doesn't have data for.
+* **User Experience:** Transparent indication of data source being used with no silent fallbacks.
+
+### 6.6 Database Schema Updates
+* **Table:** `app_settings` table updated to store Tushare API key.
+* **Methods:** `get_setting()`, `set_setting()` methods updated to handle Tushare API key.
+
+### 6.7 Success Criteria (Phase 6)
+* [ ] Tushare API key can be configured in the settings page.
+* [ ] Data source can be switched to Tushare in the settings page.
+* [ ] `POST /api/fetch` successfully fetches data from Tushare when selected as the data source.
+* [ ] `POST /api/screen` displays "Tushare" as the source label when Tushare is selected.
+* [ ] No fallback to other data sources when Tushare is selected.
+* [ ] Clear error messages for API key issues and rate limit exceeded errors.
+* [ ] Chinese stocks can be fetched and displayed using Tushare.
+* [ ] Pagination works correctly to handle Tushare's 6000 record limit per request.
+
+> **Note:** Tushare integration requires a valid Tushare API key. Users must sign up for an account at [Tushare.pro](https://tushare.pro/) to obtain an API key.

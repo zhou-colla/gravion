@@ -211,6 +211,54 @@ export interface OptimizeResponse {
   error?: string;
 }
 
+export interface FinancialStatement {
+  end_date: string;
+  end_date_iso: string;
+  period_label: string;
+  total_revenue: number | null;
+  revenue: number | null;
+  total_profit: number | null;
+  n_income: number | null;
+  n_income_attr_p: number | null;
+  operate_profit: number | null;
+  basic_eps: number | null;
+  diluted_eps: number | null;
+  income_tax: number | null;
+}
+
+export interface FinancialSummary {
+  latest_eps: number | null;
+  latest_revenue: number | null;
+  latest_profit: number | null;
+  revenue_growth_pct: number | null;
+  profit_growth_pct: number | null;
+  avg_profit_margin_pct: number | null;
+  periods_available: number;
+}
+
+export interface YFinanceFundamentals {
+  short_name: string | null;
+  sector: string | null;
+  pe_ratio: number | null;
+  market_cap: number | null;
+  total_revenue: number | null;
+  revenue_growth: number | null;
+  gross_margins: number | null;
+  operating_margins: number | null;
+}
+
+export interface FinancialsResponse {
+  success: boolean;
+  symbol: string;
+  is_cn_stock: boolean;
+  from_cache?: boolean;
+  statements: FinancialStatement[];
+  summary?: FinancialSummary;
+  yfinance_fundamentals?: YFinanceFundamentals;
+  error?: string;
+  code?: string;
+}
+
 export interface FilterCondition {
   indicator: "price" | "ma50" | "ma100" | "rsi" | "change_pct" | "volume";
   comparator: ">" | "<" | ">=" | "<=";

@@ -55,10 +55,24 @@ def compute_signal(stock: dict) -> str:
         return "STRONG SELL"
 
 
+def _get_global_date_range():
+    """Return (start_date, end_date) from global settings, or (None, None) if not configured."""
+    g_start = stock_db.get_setting("global_start_date") or ""
+    g_end = stock_db.get_setting("global_end_date") or ""
+    return (g_start or None, g_end or None)
+
+
 def resolve_date_range(start_date: str | None, end_date: str | None, period: str | None):
-    """Convert period strings to concrete start/end dates. Returns (start_str, end_str)."""
+    """Convert period strings to concrete start/end dates.
+    Priority: explicit args > global settings > period fallback.
+    Returns (start_str, end_str)."""
     if start_date and end_date:
         return start_date, end_date
+
+    # Fall back to global settings
+    g_start, g_end = _get_global_date_range()
+    if g_start and g_end:
+        return g_start, g_end
 
     end = date.today()
     period_map = {"6mo": 183, "1y": 365, "2y": 730, "5y": 1825}
@@ -68,34 +82,24 @@ def resolve_date_range(start_date: str | None, end_date: str | None, period: str
 
 
 def ensure_history(symbol: str, start_date: str, end_date: str):
-    """Check DB coverage for a symbol's date range; fetch from yfinance if missing."""
+    """Fetch only the missing date segments for a symbol using the configured data source."""
     if stock_db.has_history_coverage(symbol, start_date, end_date):
         return True
-    try:
-        import yfinance as yf
-
-        df = yf.download(symbol, start=start_date, end=end_date, progress=False)
-        if df.empty:
-            return False
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        rows = []
-        for idx, row in df.iterrows():
-            rows.append({
-                "date": idx.strftime("%Y-%m-%d"),
-                "open": float(row["Open"]) if pd.notna(row["Open"]) else None,
-                "high": float(row["High"]) if pd.notna(row["High"]) else None,
-                "low": float(row["Low"]) if pd.notna(row["Low"]) else None,
-                "close": float(row["Close"]) if pd.notna(row["Close"]) else None,
-                "volume": int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
-            })
-        stock_db.save_stock_history(symbol, rows)
-        return True
-    except Exception as e:
-        print(f"ensure_history failed for {symbol}: {e}")
-        return False
+    data_source = stock_db.get_setting("data_source") or "yahoo_finance"
+    segments = _get_missing_segments(symbol, start_date, end_date)
+    fetched_any = False
+    for seg_start, seg_end in segments:
+        try:
+            if data_source == "tushare":
+                rows = _fetch_tushare_history(symbol, seg_start, seg_end)
+            else:
+                rows = _fetch_yfinance_history(symbol, start_date=seg_start, end_date=seg_end)
+            if rows:
+                stock_db.save_stock_history(symbol, rows)
+                fetched_any = True
+        except Exception as e:
+            print(f"ensure_history segment {seg_start}–{seg_end} failed for {symbol}: {e}")
+    return fetched_any or stock_db.has_history_coverage(symbol, start_date, end_date)
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -250,117 +254,68 @@ async def fetch_data(body: Optional[FetchRequest] = None):
         errors = []
 
         if data_source == "tushare":
-            # Tushare data source
             try:
                 import tushare as ts
-                
-                # Get Tushare API key from settings or use a placeholder
                 api_key = stock_db.get_setting("tushare_api_key")
                 if not api_key:
                     return {"success": False, "error": "Tushare API key not configured. Please set tushare_api_key in settings."}
-                
                 pro = ts.pro_api(api_key)
-                
-                # Tushare has a limit of 6000 per request, so we need to paginate
-                limit = 6000
-                offset = 0
-                total_fetched = 0
-                
-                while True:
-                    # Fetch US stock list with pagination
-                    df = pro.us_basic(
-                        limit=limit,
-                        offset=offset
-                    )
-                    
-                    if df.empty:
-                        break
-                    
-                    # Process each stock
-                    for _, row in df.iterrows():
-                        symbol = row.get("ts_code", "")
-                        # Ensure symbol is a string before calling upper()
-                        if isinstance(symbol, float):
-                            symbol = str(symbol)
-                        symbol = symbol.upper()
-                        if not symbol:
+                today = datetime.now().strftime("%Y%m%d")
+                yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+
+                for sym in symbols:
+                    try:
+                        ts_code = _to_ts_code(sym)
+                        is_cn = _is_cn_stock(sym)
+                        if is_cn:
+                            price_df = pro.daily(ts_code=ts_code, start_date=yesterday, end_date=today)
+                            try:
+                                info_df = pro.stock_basic(ts_code=ts_code, fields="ts_code,name")
+                                name = info_df.iloc[0]["name"] if not info_df.empty else sym
+                            except Exception:
+                                name = sym
+                        else:
+                            price_df = pro.us_daily(ts_code=ts_code, start_date=yesterday, end_date=today)
+                            try:
+                                info_df = pro.us_basic(ts_code=ts_code, fields="ts_code,enname")
+                                name = info_df.iloc[0]["enname"] if not info_df.empty else sym
+                            except Exception:
+                                name = sym
+
+                        if price_df is None or price_df.empty:
+                            errors.append(f"{sym}: no price data from Tushare")
                             continue
-                        
-                        # Only process symbols in our list if provided
-                        if symbols and symbol not in symbols:
-                            continue
-                        
-                        try:
-                            # Get stock name from Tushare
-                            name = row.get("enname", symbol)
-                            if not name:
-                                name = symbol
-                            
-                            # Fetch price data using Tushare's US daily endpoint
-                            # Get today's date and yesterday's date
-                            from datetime import datetime, timedelta
-                            today = datetime.now().strftime("%Y%m%d")
-                            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-                            
-                            # Fetch daily price data for the last 2 days
-                            price_df = pro.us_daily(
-                                ts_code=symbol,
-                                start_date=yesterday,
-                                end_date=today
-                            )
-                            
-                            if price_df.empty:
-                                # No fallback - only use Tushare data
-                                errors.append(f"{symbol}: no price data from Tushare")
-                                continue
-                            else:
-                                # Sort by date descending to get the latest data first
-                                price_df = price_df.sort_values(by="trade_date", ascending=False)
-                                
-                                # Get the latest day's data
-                                latest_day = price_df.iloc[0]
-                                close_val = float(latest_day.get("close", 0))
-                                open_val = float(latest_day.get("open", 0))
-                                high_val = float(latest_day.get("high", 0))
-                                low_val = float(latest_day.get("low", 0))
-                                volume_val = int(latest_day.get("vol", 0))
-                                
-                                # Calculate daily change percent
-                                if len(price_df) >= 2:
-                                    prev_day = price_df.iloc[1]
-                                    prev_close = float(prev_day.get("close", 0))
-                                    if prev_close != 0:
-                                        change_pct = round(((close_val - prev_close) / prev_close) * 100, 2)
-                                    else:
-                                        change_pct = 0.0
-                                else:
-                                    change_pct = 0.0
-                            
-                            stock_db.save_stock_data(
-                                symbol=symbol,
-                                name=name,
-                                price=close_val,
-                                volume=volume_val,
-                                change_percent=change_pct,
-                                open_price=open_val,
-                                high_price=high_val,
-                                low_price=low_val,
-                                close_price=close_val,
-                                last_fetched=fetch_time,
-                            )
-                            fetched_count += 1
-                            total_fetched += 1
-                            
-                        except Exception as e:
-                            errors.append(f"{symbol}: {str(e)}")
-                    
-                    # Move to next page
-                    offset += limit
-                    
-                    # Break if we've fetched all requested symbols
-                    if symbols and total_fetched >= len(symbols):
-                        break
-                        
+
+                        price_df = price_df.sort_values("trade_date", ascending=False)
+                        latest = price_df.iloc[0]
+                        close_val = float(latest.get("close", 0) or 0)
+                        open_val = float(latest.get("open", 0) or 0)
+                        high_val = float(latest.get("high", 0) or 0)
+                        low_val = float(latest.get("low", 0) or 0)
+                        volume_val = int(latest.get("vol", 0) or 0)
+
+                        if len(price_df) >= 2:
+                            prev_close = float(price_df.iloc[1].get("close", 0) or 0)
+                            change_pct = round(((close_val - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
+                        else:
+                            change_pct = 0.0
+
+                        stock_db.save_stock_data(
+                            symbol=sym,
+                            name=name,
+                            price=close_val,
+                            volume=volume_val,
+                            change_percent=change_pct,
+                            open_price=open_val,
+                            high_price=high_val,
+                            low_price=low_val,
+                            close_price=close_val,
+                            last_fetched=fetch_time,
+                        )
+                        fetched_count += 1
+                    except Exception as e:
+                        errors.append(f"{sym}: {str(e)}")
+
             except Exception as e:
                 print(f"Tushare fetch failed: {e}")
                 return {"success": False, "error": f"Tushare API error: {str(e)}"}
@@ -573,11 +528,56 @@ async def db_info():
     return {"success": True, **info}
 
 
-def _fetch_yfinance_history(symbol: str, period: str = "6mo") -> list[dict] | None:
+import re as _re
+
+
+def _is_cn_stock(symbol: str) -> bool:
+    """Return True if symbol is a Chinese A-share (6-digit code, optional .SH/.SZ/.BJ suffix)."""
+    s = symbol.strip().upper()
+    if "." in s:
+        parts = s.rsplit(".", 1)
+        return parts[-1] in ("SH", "SZ", "BJ") and bool(_re.match(r"^\d{6}$", parts[0]))
+    return bool(_re.match(r"^\d{6}$", s))
+
+
+def _to_ts_code(symbol: str) -> str:
+    """Convert bare 6-digit A-share code to Tushare ts_code (e.g. 600519 -> 600519.SH)."""
+    s = symbol.strip().upper()
+    if "." in s:
+        return s  # already has exchange suffix
+    if _re.match(r"^\d{6}$", s):
+        first = s[0]
+        if first in ("6", "5"):
+            return f"{s}.SH"
+        elif first in ("4", "8"):
+            return f"{s}.BJ"
+        else:
+            return f"{s}.SZ"
+    return s  # US stock or other format
+
+
+def _get_missing_segments(symbol: str, want_start: str, want_end: str) -> list[tuple[str, str]]:
+    """Return list of (start, end) date ranges not yet in cache for the given symbol."""
+    cache_min, cache_max = stock_db.get_history_min_max(symbol)
+    if not cache_min:
+        return [(want_start, want_end)]
+    segments = []
+    if want_start < cache_min:
+        segments.append((want_start, cache_min))
+    if want_end > cache_max:
+        segments.append((cache_max, want_end))
+    return segments
+
+
+def _fetch_yfinance_history(symbol: str, period: str | None = None,
+                             start_date: str | None = None, end_date: str | None = None) -> list[dict] | None:
     """Download OHLC history from yfinance and return as list of dicts. Returns None on failure."""
     try:
         import yfinance as yf
-        df = yf.download(symbol, period=period, progress=False)
+        if start_date and end_date:
+            df = yf.download(symbol, start=start_date, end=end_date, progress=False)
+        else:
+            df = yf.download(symbol, period=period or "1y", progress=False)
         if df.empty:
             return None
         if isinstance(df.columns, pd.MultiIndex):
@@ -595,6 +595,46 @@ def _fetch_yfinance_history(symbol: str, period: str = "6mo") -> list[dict] | No
         return rows
     except Exception as e:
         print(f"yfinance history fetch failed for {symbol}: {e}")
+        return None
+
+
+def _fetch_tushare_history(symbol: str, start_date: str | None = None,
+                            end_date: str | None = None) -> list[dict] | None:
+    """Download OHLC history from Tushare and return as list of dicts. Returns None on failure."""
+    try:
+        import tushare as ts
+        api_key = stock_db.get_setting("tushare_api_key")
+        if not api_key:
+            return None
+        pro = ts.pro_api(api_key)
+        ts_code = _to_ts_code(symbol)
+        is_cn = _is_cn_stock(symbol)
+        # Convert YYYY-MM-DD to YYYYMMDD for Tushare
+        ts_start = start_date.replace("-", "") if start_date else None
+        ts_end = end_date.replace("-", "") if end_date else None
+
+        if is_cn:
+            df = pro.daily(ts_code=ts_code, start_date=ts_start, end_date=ts_end)
+        else:
+            df = pro.us_daily(ts_code=ts_code, start_date=ts_start, end_date=ts_end)
+
+        if df is None or df.empty:
+            return None
+        df = df.sort_values("trade_date", ascending=True)
+        rows = []
+        for _, row in df.iterrows():
+            d = str(row["trade_date"])
+            rows.append({
+                "date": f"{d[:4]}-{d[4:6]}-{d[6:]}",
+                "open": float(row["open"]) if pd.notna(row["open"]) else None,
+                "high": float(row["high"]) if pd.notna(row["high"]) else None,
+                "low": float(row["low"]) if pd.notna(row["low"]) else None,
+                "close": float(row["close"]) if pd.notna(row["close"]) else None,
+                "volume": int(row["vol"]) if pd.notna(row["vol"]) else 0,
+            })
+        return rows if rows else None
+    except Exception as e:
+        print(f"Tushare history fetch failed for {symbol}: {e}")
         return None
 
 
@@ -696,16 +736,18 @@ async def stock_detail(symbol: str, realtime: bool = False):
         from_cache = False
 
         if realtime:
-            fresh = _fetch_yfinance_history(symbol)
-            if fresh:
-                stock_db.save_stock_history(symbol, fresh)
-                history_rows = fresh
-                from_cache = False
-            elif has_cache:
-                history_rows = cached_rows
-                from_cache = True
-                print(f"Realtime fetch failed for {symbol}; serving from cache")
-            else:
+            # Use global date range if configured, otherwise default 1 year
+            g_start, g_end = _get_global_date_range()
+            fetch_start = g_start or (date.today() - timedelta(days=365)).isoformat()
+            fetch_end = g_end or date.today().isoformat()
+            # Incremental fetch: only downloads missing segments
+            ensure_history(symbol, fetch_start, fetch_end)
+            history_rows = (
+                stock_db.get_stock_history_range(symbol, fetch_start, fetch_end)
+                or stock_db.get_stock_history(symbol)
+            )
+            from_cache = bool(history_rows)
+            if not history_rows:
                 return {"success": False, "error": f"No data for {symbol}. Enable Realtime Fetch and click Fetch & Run first."}
         else:
             if has_cache:
@@ -729,7 +771,7 @@ async def stock_detail(symbol: str, realtime: bool = False):
             "fifty_two_week_low": detail["cached_52w_low"],
         }
         company_name = symbol
-        if realtime:
+        if realtime and (stock_db.get_setting("data_source") or "yahoo_finance") != "tushare":
             try:
                 import yfinance as yf
                 ticker = yf.Ticker(symbol)
@@ -802,7 +844,13 @@ async def precache_history(body: Optional[PrecacheRequest] = None):
         else:
             symbols = _get_system_portfolio_symbols()
 
-        period = (body.period if body and body.period else "6mo")
+        # Resolve date range: global settings > period fallback
+        g_start, g_end = _get_global_date_range()
+        period = body.period if body and body.period else "1y"
+        if g_start and g_end:
+            fetch_start, fetch_end = g_start, g_end
+        else:
+            fetch_start, fetch_end = resolve_date_range(None, None, period)
         cached = 0
         skipped = 0
         errors = []
@@ -813,16 +861,12 @@ async def precache_history(body: Optional[PrecacheRequest] = None):
             batch = symbols[batch_start:batch_start + batch_size]
             for sym in batch:
                 try:
-                    # Skip if already cached today
-                    freshness = stock_db.get_history_freshness(sym)
-                    if freshness and freshness["last_fetch"]:
-                        from datetime import date
-                        if freshness["last_fetch"][:10] == date.today().isoformat():
-                            skipped += 1
-                            continue
-                    rows = _fetch_yfinance_history(sym, period)
-                    if rows:
-                        stock_db.save_stock_history(sym, rows)
+                    # Skip if cache already fully covers the requested range
+                    if stock_db.has_history_coverage(sym, fetch_start, fetch_end):
+                        skipped += 1
+                        continue
+                    ok = ensure_history(sym, fetch_start, fetch_end)
+                    if ok:
                         cached += 1
                     else:
                         errors.append(f"{sym}: no data returned")

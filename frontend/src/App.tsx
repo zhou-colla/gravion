@@ -49,7 +49,7 @@ export default function App() {
 
   // Phase 5 state
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
+  const [settings, setSettings] = useState<AppSettings & { tushare_api_key?: string }>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "", tushare_api_key: undefined });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
   const [scannerStrategies, setScannerStrategies] = useState<string[]>([]);
   const [comparisonStrategies, setComparisonStrategies] = useState<string[]>([]);
@@ -58,6 +58,7 @@ export default function App() {
   const [filterOperator, setFilterOperator] = useState<"AND" | "OR">("AND");
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [showFilterBuilder, setShowFilterBuilder] = useState(false);
+  const [sourceLabel, setSourceLabel] = useState("Yahoo Finance (yfinance)");
 
   const checkHealth = async () => {
     try {
@@ -117,6 +118,7 @@ export default function App() {
         data_source: json.data_source || "yahoo_finance",
         global_start_date: json.global_start_date || "",
         global_end_date: json.global_end_date || "",
+        tushare_api_key: json.tushare_api_key,
       });
     } catch {
       /* silent */
@@ -180,6 +182,7 @@ export default function App() {
         setStocks(json.data);
         setFilterTags(json.filter_tags || []);
         setComparisonStrategies(json.comparison_strategies || []);
+        if (json.source) setSourceLabel(json.source);
         setBackendStatus("connected");
       } else {
         setError(json.error || "Screen returned no data");
@@ -568,7 +571,7 @@ export default function App() {
                   <ExportButton stocks={stocks} disabled={isBusy} />
                   <div className="h-4 w-px bg-tv-border" />
                   <span>
-                    Source: <span className="text-tv-text font-medium">Yahoo Finance (yfinance)</span>
+                    Source: <span className="text-tv-text font-medium">{sourceLabel}</span>
                   </span>
                 </div>
               </div>
@@ -625,7 +628,7 @@ export default function App() {
                         <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
                         <p className="text-tv-muted">
                           {fetching
-                            ? "Fetching NASDAQ 100 data from Yahoo Finance..."
+                            ? "Fetching data..."
                             : "Screening cached data..."}
                         </p>
                       </div>

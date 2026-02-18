@@ -325,6 +325,24 @@ class StockDatabase:
             print(f"Error retrieving stock history range for {symbol}: {e}")
             return []
 
+    def get_history_min_max(self, symbol):
+        """Return (min_date, max_date) of cached history as ISO strings, or (None, None) if empty."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT MIN(date), MAX(date) FROM stock_history WHERE symbol = ?",
+                (symbol,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return row[0], row[1]
+            return None, None
+        except Exception as e:
+            print(f"Error getting history min/max for {symbol}: {e}")
+            return None, None
+
     def has_history_coverage(self, symbol, start_date, end_date):
         """Check if stored history spans the requested date range (MIN <= start AND MAX >= end)."""
         try:

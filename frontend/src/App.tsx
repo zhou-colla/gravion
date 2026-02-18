@@ -8,6 +8,7 @@ import VisualBuilder from "./components/VisualBuilder";
 import BacktestWorkspace from "./components/BacktestWorkspace";
 import SettingsPanel from "./components/SettingsPanel";
 import PortfolioManager from "./components/PortfolioManager";
+import AnalysisPanel from "./components/AnalysisPanel";
 import SourceSelector from "./components/SourceSelector";
 import type { SourceSelection } from "./components/SourceSelector";
 import StrategySelector from "./components/StrategySelector";
@@ -45,7 +46,7 @@ export default function App() {
   const backtestAbortRef = useRef<AbortController | null>(null);
 
   // View switching
-  const [activeView, setActiveView] = useState<"scanner" | "backtest" | "portfolios" | "settings">("scanner");
+  const [activeView, setActiveView] = useState<"scanner" | "backtest" | "portfolios" | "analysis" | "settings">("scanner");
 
   // Phase 5 state
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -462,6 +463,18 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </button>
+          {/* Analysis */}
+          <button
+            onClick={() => setActiveView("analysis")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "analysis" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title="Stock Analysis"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+            </svg>
+          </button>
           {/* Settings */}
           <button
             onClick={() => setActiveView("settings")}
@@ -714,6 +727,12 @@ export default function App() {
           <PortfolioManager
             portfolios={portfolios}
             onPortfoliosChanged={loadPortfolios}
+          />
+        ) : activeView === "analysis" ? (
+          <AnalysisPanel
+            portfolios={portfolios}
+            settings={settings}
+            realtimeFetch={realtimeFetch}
           />
         ) : activeView === "settings" ? (
           <SettingsPanel

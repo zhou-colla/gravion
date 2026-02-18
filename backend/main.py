@@ -638,6 +638,112 @@ def _fetch_tushare_history(symbol: str, start_date: str | None = None,
         return None
 
 
+def _fetch_tushare_income(symbol: str, start_date: str, end_date: str) -> list[dict] | None:
+    """Fetch quarterly income statements from Tushare for a CN A-share. Returns list of dicts."""
+    try:
+        import tushare as ts
+        api_key = stock_db.get_setting("tushare_api_key")
+        if not api_key:
+            return None
+        pro = ts.pro_api(api_key)
+        ts_code = _to_ts_code(symbol)
+        df = pro.income(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=end_date,
+            fields="ts_code,ann_date,end_date,basic_eps,diluted_eps,total_revenue,"
+                   "revenue,total_profit,n_income,n_income_attr_p,operate_profit,"
+                   "total_cogs,oper_cost,income_tax",
+        )
+        if df is None or df.empty:
+            return None
+        # Drop duplicates by end_date, keep first (most recent announcement)
+        df = df.drop_duplicates(subset=["end_date"], keep="first")
+        df = df.sort_values("end_date", ascending=True)
+        rows = []
+        for _, row in df.iterrows():
+            def _f(key):
+                v = row.get(key)
+                return float(v) if v is not None and pd.notna(v) else None
+            rows.append({
+                "end_date": str(row["end_date"]),
+                "ann_date": str(row["ann_date"]) if pd.notna(row.get("ann_date")) else None,
+                "total_revenue": _f("total_revenue"),
+                "revenue": _f("revenue"),
+                "total_profit": _f("total_profit"),
+                "n_income": _f("n_income"),
+                "n_income_attr_p": _f("n_income_attr_p"),
+                "operate_profit": _f("operate_profit"),
+                "total_cogs": _f("total_cogs"),
+                "oper_cost": _f("oper_cost"),
+                "income_tax": _f("income_tax"),
+                "basic_eps": _f("basic_eps"),
+                "diluted_eps": _f("diluted_eps"),
+            })
+        return rows if rows else None
+    except Exception as e:
+        print(f"Tushare income fetch failed for {symbol}: {e}")
+        return None
+
+
+def _enrich_statements(rows: list[dict]) -> list[dict]:
+    """Add end_date_iso and period_label to each financial statement row."""
+    month_to_q = {"03": "Q1", "06": "Q2", "09": "Q3", "12": "Q4"}
+    enriched = []
+    for r in rows:
+        d = str(r.get("end_date", ""))
+        iso = f"{d[:4]}-{d[4:6]}-{d[6:]}" if len(d) == 8 else d
+        q = month_to_q.get(d[4:6], "?") if len(d) >= 6 else "?"
+        year = d[:4] if len(d) >= 4 else "?"
+        enriched.append({**r, "end_date_iso": iso, "period_label": f"{q} {year}"})
+    return enriched
+
+
+def _build_financials_summary(statements: list[dict]) -> dict:
+    """Compute aggregate summary metrics from a list of financial statement rows."""
+    if not statements:
+        return {
+            "latest_eps": None, "latest_revenue": None, "latest_profit": None,
+            "revenue_growth_pct": None, "profit_growth_pct": None,
+            "avg_profit_margin_pct": None, "periods_available": 0,
+        }
+    latest = statements[-1]
+    latest_eps = latest.get("basic_eps")
+    latest_revenue = latest.get("total_revenue")
+    latest_profit = latest.get("n_income_attr_p")
+
+    # YoY growth: last 4 quarters vs prior 4 quarters
+    revenue_growth = profit_growth = None
+    if len(statements) >= 8:
+        recent_rev = sum(s.get("total_revenue") or 0 for s in statements[-4:])
+        prior_rev = sum(s.get("total_revenue") or 0 for s in statements[-8:-4])
+        if prior_rev:
+            revenue_growth = round((recent_rev - prior_rev) / abs(prior_rev) * 100, 2)
+        recent_prof = sum(s.get("n_income_attr_p") or 0 for s in statements[-4:])
+        prior_prof = sum(s.get("n_income_attr_p") or 0 for s in statements[-8:-4])
+        if prior_prof:
+            profit_growth = round((recent_prof - prior_prof) / abs(prior_prof) * 100, 2)
+
+    # Average profit margin
+    margins = []
+    for s in statements:
+        rev = s.get("total_revenue")
+        prof = s.get("n_income_attr_p")
+        if rev and prof and rev != 0:
+            margins.append(prof / rev * 100)
+    avg_margin = round(sum(margins) / len(margins), 2) if margins else None
+
+    return {
+        "latest_eps": latest_eps,
+        "latest_revenue": latest_revenue,
+        "latest_profit": latest_profit,
+        "revenue_growth_pct": revenue_growth,
+        "profit_growth_pct": profit_growth,
+        "avg_profit_margin_pct": avg_margin,
+        "periods_available": len(statements),
+    }
+
+
 def _build_detail_response(symbol: str, history_rows: list[dict], from_cache: bool) -> dict:
     """Build the full detail response from history rows using local indicator calculations."""
     from strategies.indicators import sma, rsi as rsi_fn, macd as macd_fn, bollinger_bands
@@ -817,6 +923,119 @@ async def stock_detail(symbol: str, realtime: bool = False):
     except Exception as e:
         print(f"Detail endpoint failed for {symbol}: {e}")
         return {"success": False, "error": str(e)}
+
+
+@app.get("/api/stock/{symbol}/financials")
+async def stock_financials(
+    symbol: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    realtime: bool = False,
+):
+    """
+    Returns quarterly financial statements for a stock.
+    - CN A-shares: uses Tushare income API (cached for 90 days)
+    - US stocks: returns yfinance fundamentals snapshot (PE, market cap, margins, etc.)
+    """
+    try:
+        from datetime import datetime as _dt
+        symbol = symbol.upper()
+        is_cn = _is_cn_stock(symbol)
+
+        if not is_cn:
+            # US stock: return yfinance snapshot fundamentals
+            yf_data: dict = {}
+            if realtime:
+                try:
+                    import yfinance as yf
+                    info = yf.Ticker(symbol).info or {}
+                    yf_data = {
+                        "short_name": info.get("shortName"),
+                        "sector": info.get("sector"),
+                        "pe_ratio": info.get("trailingPE"),
+                        "market_cap": info.get("marketCap"),
+                        "total_revenue": info.get("totalRevenue"),
+                        "revenue_growth": info.get("revenueGrowth"),
+                        "gross_margins": info.get("grossMargins"),
+                        "operating_margins": info.get("operatingMargins"),
+                    }
+                except Exception as e:
+                    print(f"yfinance fundamentals failed for {symbol}: {e}")
+            return {
+                "success": True,
+                "symbol": symbol,
+                "is_cn_stock": False,
+                "statements": [],
+                "yfinance_fundamentals": yf_data if yf_data else None,
+            }
+
+        # CN stock: use Tushare income data
+        data_source = stock_db.get_setting("data_source") or "yahoo_finance"
+        if data_source != "tushare":
+            # Check if we have any cached data regardless of source setting
+            cached = stock_db.get_financial_statements(symbol)
+            if not cached:
+                return {
+                    "success": False,
+                    "symbol": symbol,
+                    "is_cn_stock": True,
+                    "error": "Financial data requires Tushare data source. Switch to Tushare in Settings.",
+                    "statements": [],
+                }
+
+        resolved_start, resolved_end = resolve_date_range(start_date, end_date, None)
+        ts_start = resolved_start.replace("-", "")
+        ts_end = resolved_end.replace("-", "")
+
+        from_cache = True
+        if realtime and not stock_db.has_fresh_financials(symbol):
+            rows = _fetch_tushare_income(symbol, ts_start, ts_end)
+            if rows:
+                stock_db.save_financial_statements(symbol, rows)
+                from_cache = False
+            elif not stock_db.get_financial_statements(symbol):
+                # Detect quota errors (already printed in _fetch_tushare_income)
+                return {
+                    "success": False,
+                    "symbol": symbol,
+                    "is_cn_stock": True,
+                    "error": "Failed to fetch financial data. Check Tushare API key and available points.",
+                    "code": "tushare_fetch_failed",
+                    "statements": [],
+                }
+
+        statements = stock_db.get_financial_statements(symbol, ts_start, ts_end)
+        if not statements:
+            if not realtime:
+                return {
+                    "success": False,
+                    "symbol": symbol,
+                    "is_cn_stock": True,
+                    "error": "No cached financial data. Enable Realtime Fetch to download.",
+                    "statements": [],
+                }
+            return {
+                "success": False,
+                "symbol": symbol,
+                "is_cn_stock": True,
+                "error": f"No financial data found for {symbol} in the selected date range.",
+                "statements": [],
+            }
+
+        enriched = _enrich_statements(statements)
+        summary = _build_financials_summary(statements)
+        return {
+            "success": True,
+            "symbol": symbol,
+            "is_cn_stock": True,
+            "from_cache": from_cache,
+            "statements": enriched,
+            "summary": summary,
+        }
+
+    except Exception as e:
+        print(f"Financials endpoint failed for {symbol}: {e}")
+        return {"success": False, "error": str(e), "statements": []}
 
 
 class PrecacheRequest(BaseModel):

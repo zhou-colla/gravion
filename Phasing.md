@@ -234,18 +234,60 @@
 * **Error Handling:** Clear error messages for symbols that Tushare doesn't have data for.
 * **User Experience:** Transparent indication of data source being used with no silent fallbacks.
 
-### 6.6 Database Schema Updates
-* **Table:** `app_settings` table updated to store Tushare API key.
-* **Methods:** `get_setting()`, `set_setting()` methods updated to handle Tushare API key.
+---
 
-### 6.7 Success Criteria (Phase 6)
-* [ ] Tushare API key can be configured in the settings page.
-* [ ] Data source can be switched to Tushare in the settings page.
-* [ ] `POST /api/fetch` successfully fetches data from Tushare when selected as the data source.
-* [ ] `POST /api/screen` displays "Tushare" as the source label when Tushare is selected.
-* [ ] No fallback to other data sources when Tushare is selected.
-* [ ] Clear error messages for API key issues and rate limit exceeded errors.
-* [ ] Chinese stocks can be fetched and displayed using Tushare.
-* [ ] Pagination works correctly to handle Tushare's 6000 record limit per request.
+## Phase 7: Dedicated Stock Analysis Dashboard (Weeks 13-14)
+**Goal:** Create a comprehensive stock analysis page that provides detailed financial insights using Tushare API, with caching and customizable time ranges.
 
-> **Note:** Tushare integration requires a valid Tushare API key. Users must sign up for an account at [Tushare.pro](https://tushare.pro/) to obtain an API key.
+### 7.1 Dedicated Analysis Page
+* **Deliverable:** New standalone page accessible via the side menu.
+* **UI:** Dedicated dashboard layout with financial data visualization and details.
+* **Navigation:** New side menu icon labeled "Analysis" that opens the dedicated page.
+
+### 7.2 Tushare Financial Data Integration
+* **Deliverable:** Integration with Tushare's `income` API endpoint for financial statements.
+* **Data Fields:** Quarterly income, EPS (basic and diluted), revenue, profit margins, and other key financial metrics.
+* **API Reference:** Uses Tushare's income interface (doc_id=33) for comprehensive financial data.
+* **Authentication:** Leverages existing Tushare API key from settings.
+https://tushare.pro/document/2?doc_id=33
+
+### 7.3 Data Caching System
+* **Feature:** Cache financial data to minimize API calls.
+* **Storage:** New database table for financial statement data with proper indexing.
+* **Invalidation:** Automatic refresh when data becomes stale based on reporting cycles.
+
+### 7.4 Time Range Configuration
+* **Feature:** Time range for financial data aligned with global settings.
+* **UI:** Time range selector on the analysis page that respects global settings defaults.
+* **Endpoint:** `GET /api/stock/{symbol}/financials` with start/end date parameters.
+
+### 7.5 Interactive Dashboard
+* **Feature:** Comprehensive dashboard displaying:
+  * Quarterly income statement trends
+  * EPS growth visualization
+  * Revenue and profit margin analysis
+  * Key financial ratios
+  * Historical financial performance comparison
+  * Stock price chart with customizable display range
+* **Charts:** Line charts for trends, bar charts for quarterly comparisons.
+* **Display Range Customization:** User can specify the time range for the stock price chart, not just limited to the default latest year, for other pages too.
+
+### 7.6 User Interaction
+* **Feature:** Stock symbol input field for users to type any stock index.
+* **Auto-complete:** Symbol suggestion based on available data.
+* **Real-time updates:** Option to refresh data on demand.
+* **Realtime Toggle Integration:** Data fetching only occurs if the global realtime toggle is enabled. If realtime is off and no cached data is available, this will be clearly indicated to the user.
+
+### 7.7 Performance Optimization
+* **Feature:** Efficient data fetching with proper error handling.
+* **Loading states:** Skeleton screens during data retrieval.
+* **Error handling:** Clear messages for API limitations (e.g., insufficient Tushare points).
+
+### 7.8 Success Criteria
+* [ ] User can access the dedicated analysis page via side menu.
+* [ ] User can input any stock symbol and retrieve detailed financial data.
+* [ ] Financial data is cached and only refreshed when needed.
+* [ ] Dashboard displays comprehensive financial metrics with interactive charts.
+* [ ] User can customize the display range for the stock price chart, not just limited to the default latest year.
+* [ ] Time range settings are respected for data retrieval.
+* [ ] Proper error handling for Tushare API limitations and network issues.

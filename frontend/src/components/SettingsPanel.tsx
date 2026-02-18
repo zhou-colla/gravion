@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { AppSettings } from "../types/stock";
 
 interface SettingsPanelProps {
-  settings: AppSettings;
-  onSettingsChanged: (settings: AppSettings) => void;
+  settings: AppSettings & { tushare_api_key?: string };
+  onSettingsChanged: (settings: AppSettings & { tushare_api_key?: string }) => void;
 }
 
 export default function SettingsPanel({ settings, onSettingsChanged }: SettingsPanelProps) {
-  const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+  const [localSettings, setLocalSettings] = useState<AppSettings & { tushare_api_key?: string }>(settings);
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -15,7 +15,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
     setLocalSettings(settings);
   }, [settings]);
 
-  const saveSettings = useCallback(async (updated: Partial<AppSettings>) => {
+  const saveSettings = useCallback(async (updated: Partial<AppSettings & { tushare_api_key?: string }>) => {
     setSaving(true);
     try {
       const res = await fetch("http://localhost:8000/api/settings", {
@@ -25,10 +25,11 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
       });
       const json = await res.json();
       if (json.success) {
-        const newSettings: AppSettings = {
+        const newSettings: AppSettings & { tushare_api_key?: string } = {
           data_source: json.data_source,
           global_start_date: json.global_start_date,
           global_end_date: json.global_end_date,
+          tushare_api_key: json.tushare_api_key ?? localSettings.tushare_api_key,
         };
         setLocalSettings(newSettings);
         onSettingsChanged(newSettings);
@@ -38,7 +39,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
     } finally {
       setSaving(false);
     }
-  }, [onSettingsChanged]);
+  }, [onSettingsChanged, localSettings.tushare_api_key]);
 
   const debouncedSave = useCallback((patch: Partial<AppSettings>) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -90,6 +91,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
           >
             <option value="yahoo_finance">Yahoo Finance (Free)</option>
             <option value="moomoo_opend">Moomoo OpenD (Real-time)</option>
+            <option value="tushare">Tushare (Chinese & US Stocks)</option>
           </select>
 
           {localSettings.data_source === "moomoo_opend" && (
@@ -102,6 +104,40 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
                   Moomoo OpenD gateway is not configured. Data fetching will fail until the gateway is installed and connected.
                 </span>
               </div>
+            </div>
+          )}
+
+          {localSettings.data_source === "tushare" && (
+            <div className="mt-3 bg-blue-900/20 border border-blue-600/30 rounded px-3 py-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <span className="text-blue-400 text-xs font-medium">
+                  Tushare API key is required. Data fetching will fail until the API key is configured.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Tushare API Key */}
+          {localSettings.data_source === "tushare" && (
+            <div className="mt-4">
+              <label className="text-xs text-tv-muted block mb-1">Tushare API Key</label>
+              <input
+                type="text"
+                value={localSettings.tushare_api_key || ""}
+                onChange={(e) => {
+                  setLocalSettings((prev) => ({ ...prev, tushare_api_key: e.target.value }));
+                  saveSettings({ tushare_api_key: e.target.value });
+                }}
+                disabled={saving}
+                placeholder="Enter your Tushare API key"
+                className="bg-tv-base text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue w-full"
+              />
+              <p className="text-xs text-tv-muted mt-1">
+                Get your API key from <a href="https://tushare.pro/" target="_blank" rel="noopener noreferrer" className="text-tv-blue hover:underline">Tushare.pro</a>
+              </p>
             </div>
           )}
         </div>

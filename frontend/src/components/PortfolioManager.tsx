@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import type { Portfolio, PortfolioDetail } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface PortfolioManagerProps {
   portfolios: Portfolio[];
   onPortfoliosChanged: () => void;
+  t: Translation;
 }
 
-export default function PortfolioManager({ portfolios, onPortfoliosChanged }: PortfolioManagerProps) {
+export default function PortfolioManager({ portfolios, onPortfoliosChanged, t }: PortfolioManagerProps) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -141,14 +143,14 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
       {/* Left Pane: Portfolio List */}
       <div className="w-72 border-r border-tv-border flex flex-col shrink-0">
         <div className="px-4 py-3 border-b border-tv-border">
-          <h2 className="text-sm font-bold text-tv-text mb-3">Portfolios</h2>
+          <h2 className="text-sm font-bold text-tv-text mb-3">{t.portfolios}</h2>
           <div className="flex gap-2">
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && createPortfolio()}
-              placeholder="New portfolio name..."
+              placeholder={`${t.portfolioName}...`}
               className="flex-1 bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue"
             />
             <button
@@ -156,7 +158,7 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
               disabled={!newName.trim() || creating}
               className="bg-tv-blue hover:bg-blue-600 disabled:opacity-30 text-white px-3 py-1.5 rounded text-xs font-medium transition cursor-pointer"
             >
-              Create
+              {t.createPortfolio}
             </button>
           </div>
         </div>
@@ -189,7 +191,7 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
                     deletePortfolio(p.id);
                   }}
                   className="text-tv-muted hover:text-tv-red transition cursor-pointer p-0.5"
-                  title="Delete portfolio"
+                  title={t.delete}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -205,7 +207,7 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-tv-muted text-sm">Select a portfolio to view its symbols</p>
+            <p className="text-tv-muted text-sm">{t.portfolios}</p>
           </div>
         ) : detailLoading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -254,7 +256,7 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
                     value={symbolInput}
                     onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === "Enter" && addSymbols()}
-                    placeholder="Add symbols (e.g. AAPL, MSFT, TSLA)..."
+                    placeholder={`${t.addSymbol} (e.g. AAPL, MSFT, TSLA)...`}
                     className="flex-1 bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue"
                   />
                   <button
@@ -262,7 +264,7 @@ export default function PortfolioManager({ portfolios, onPortfoliosChanged }: Po
                     disabled={!symbolInput.trim()}
                     className="bg-tv-blue hover:bg-blue-600 disabled:opacity-30 text-white px-4 py-2 rounded text-xs font-medium transition cursor-pointer"
                   >
-                    Add
+                    {t.addSymbol}
                   </button>
                 </div>
               </div>

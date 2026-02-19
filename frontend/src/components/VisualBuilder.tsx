@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { StrategyCondition, JsonStrategyDefinition } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface VisualBuilderProps {
   onSave: (definition: JsonStrategyDefinition) => void;
   onClose: () => void;
+  t: Translation;
 }
 
 const INDICATORS = ["SMA", "EMA", "RSI", "Price", "Volume", "Daily Change %"];
@@ -17,10 +19,12 @@ function ConditionRow({
   condition,
   onChange,
   onRemove,
+  t,
 }: {
   condition: StrategyCondition;
   onChange: (c: StrategyCondition) => void;
   onRemove: () => void;
+  t: Translation;
 }) {
   return (
     <div className="flex items-center space-x-2 mb-2">
@@ -38,7 +42,7 @@ function ConditionRow({
         value={condition.period}
         onChange={(e) => onChange({ ...condition, period: Number(e.target.value) })}
         className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue w-16 font-mono"
-        placeholder="Period"
+        placeholder={t.period}
       />
       <select
         value={condition.comparator}
@@ -69,7 +73,7 @@ function ConditionRow({
   );
 }
 
-export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
+export default function VisualBuilder({ onSave, onClose, t }: VisualBuilderProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [buyConditions, setBuyConditions] = useState<StrategyCondition[]>([emptyCondition()]);
@@ -104,7 +108,7 @@ export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
       <div className="bg-tv-base border border-tv-border rounded-lg shadow-2xl w-[560px] max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-tv-border shrink-0">
-          <h2 className="text-tv-text font-bold text-sm">Visual Strategy Builder</h2>
+          <h2 className="text-tv-text font-bold text-sm">{t.visualStrategyBuilder}</h2>
           <button onClick={onClose} className="text-tv-muted hover:text-tv-text transition cursor-pointer">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -120,14 +124,14 @@ export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Strategy Name"
+              placeholder={t.strategy}
               className="w-full bg-tv-panel text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue"
             />
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description (optional)"
+              placeholder={`${t.filterDescription} (optional)`}
               className="w-full bg-tv-panel text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue"
             />
           </div>
@@ -149,6 +153,7 @@ export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
                 condition={cond}
                 onChange={(c) => updateBuy(i, c)}
                 onRemove={() => setBuyConditions(buyConditions.filter((_, j) => j !== i))}
+                t={t}
               />
             ))}
             {buyConditions.length === 0 && (
@@ -173,6 +178,7 @@ export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
                 condition={cond}
                 onChange={(c) => updateSell(i, c)}
                 onRemove={() => setSellConditions(sellConditions.filter((_, j) => j !== i))}
+                t={t}
               />
             ))}
             {sellConditions.length === 0 && (
@@ -187,14 +193,14 @@ export default function VisualBuilder({ onSave, onClose }: VisualBuilderProps) {
             onClick={onClose}
             className="px-4 py-1.5 text-xs text-tv-muted hover:text-tv-text border border-tv-border rounded transition cursor-pointer"
           >
-            Cancel
+            {t.cancel}
           </button>
           <button
             onClick={handleSave}
             disabled={!name.trim()}
             className="px-4 py-1.5 text-xs text-white bg-tv-blue hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium transition cursor-pointer"
           >
-            Save Strategy
+            {t.saveStrategy}
           </button>
         </div>
       </div>

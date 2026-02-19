@@ -1,9 +1,11 @@
 import type { BatchBacktestResult } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface BacktestTransactionLogProps {
   result: BatchBacktestResult;
   strategyName?: string;
   onClose: () => void;
+  t: Translation;
 }
 
 function MetricCard({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -15,7 +17,7 @@ function MetricCard({ label, value, color }: { label: string; value: string; col
   );
 }
 
-export default function BacktestTransactionLog({ result, strategyName, onClose }: BacktestTransactionLogProps) {
+export default function BacktestTransactionLog({ result, strategyName, onClose, t }: BacktestTransactionLogProps) {
   return (
     <aside className="w-[280px] border-l border-tv-border bg-tv-base flex flex-col shrink-0 overflow-hidden">
       {/* Header */}
@@ -40,22 +42,22 @@ export default function BacktestTransactionLog({ result, strategyName, onClose }
       <div className="p-3 space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <MetricCard
-            label="Return"
+            label={t.return}
             value={`${result.total_return_pct >= 0 ? "+" : ""}${result.total_return_pct}%`}
             color={result.total_return_pct >= 0 ? "text-tv-green" : "text-tv-red"}
           />
           <MetricCard
-            label="Win Rate"
+            label={t.winRate}
             value={`${result.win_rate_pct}%`}
             color={result.win_rate_pct >= 50 ? "text-tv-green" : "text-tv-red"}
           />
           <MetricCard
-            label="Profit Factor"
+            label={t.profitFactor}
             value={`${result.profit_factor}`}
             color={result.profit_factor >= 1 ? "text-tv-green" : "text-tv-red"}
           />
           <MetricCard
-            label="Max Drawdown"
+            label={t.maxDrawdown}
             value={`-${result.max_drawdown_pct}%`}
             color="text-tv-red"
           />
@@ -67,7 +69,7 @@ export default function BacktestTransactionLog({ result, strategyName, onClose }
       {/* Transaction Log */}
       <div className="flex-1 overflow-y-auto p-3">
         <h4 className="text-[10px] text-tv-muted uppercase font-bold tracking-wider mb-2">
-          Transactions ({result.trades.length})
+          {t.transactions.replace('{count}', result.trades.length.toString())}
         </h4>
         <div className="space-y-1">
           {result.trades.map((trade, i) => (
@@ -81,7 +83,7 @@ export default function BacktestTransactionLog({ result, strategyName, onClose }
                     ? "bg-tv-green/10 text-tv-green"
                     : "bg-tv-red/10 text-tv-red"
                 }`}>
-                  {trade.type}
+                  {trade.type === "BUY" ? t.buy : t.sell}
                 </span>
                 <span className="text-tv-muted text-[10px]">{trade.date}</span>
               </div>
@@ -96,7 +98,7 @@ export default function BacktestTransactionLog({ result, strategyName, onClose }
             </div>
           ))}
           {result.trades.length === 0 && (
-            <p className="text-tv-muted text-xs text-center py-2">No trades generated</p>
+            <p className="text-tv-muted text-xs text-center py-2">{t.noTradesGenerated}</p>
           )}
         </div>
       </div>

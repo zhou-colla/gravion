@@ -285,6 +285,44 @@ class StockDatabase:
                     for r in rows
                 ],
             )
+            
+            # Also update stock_cache with the latest data point
+            if rows:
+                # Sort by date to get the latest
+                sorted_rows = sorted(rows, key=lambda x: x["date"], reverse=True)
+                latest = sorted_rows[0]
+                fetch_time = datetime.now().isoformat()
+                
+                # Calculate change percent if we have at least two data points
+                change_percent = 0.0
+                if len(sorted_rows) >= 2:
+                    latest_close = float(latest["close"])
+                    prev_close = float(sorted_rows[1]["close"])
+                    if prev_close > 0:
+                        change_percent = round(((latest_close - prev_close) / prev_close) * 100, 2)
+                
+                # Update or insert into stock_cache
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO stock_cache
+                        (symbol, name, price, open, high, low, close, volume, change_percent, last_fetched, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        symbol,
+                        symbol,  # name will be updated by price fetch
+                        float(latest["close"]),
+                        float(latest["open"]),
+                        float(latest["high"]),
+                        float(latest["low"]),
+                        float(latest["close"]),
+                        int(latest["volume"]),
+                        change_percent,
+                        fetch_time,
+                        fetch_time,
+                    ),
+                )
+            
             conn.commit()
             conn.close()
             return len(rows)
@@ -764,6 +802,28 @@ class StockDatabase:
             return True
         except Exception as e:
             print(f"Error clearing database: {e}")
+            return False
+
+    def clear_symbol_data(self, symbol):
+        """Clear all cached data for a specific symbol from all tables."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Clear from stock_cache
+            cursor.execute("DELETE FROM stock_cache WHERE symbol = ?", (symbol,))
+            
+            # Clear from stock_history
+            cursor.execute("DELETE FROM stock_history WHERE symbol = ?", (symbol,))
+            
+            # Clear from financial_statements
+            cursor.execute("DELETE FROM financial_statements WHERE symbol = ?", (symbol,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error clearing data for {symbol}: {e}")
             return False
 
 

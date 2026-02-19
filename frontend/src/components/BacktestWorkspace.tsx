@@ -11,6 +11,7 @@ import BacktestOverview from "./BacktestOverview";
 import BacktestResultsGrid from "./BacktestResultsGrid";
 import BacktestTransactionLog from "./BacktestTransactionLog";
 import OptimizerPanel from "./OptimizerPanel";
+import type { Translation } from "../i18n";
 
 interface BacktestWorkspaceProps {
   strategies: StrategyInfo[];
@@ -19,6 +20,7 @@ interface BacktestWorkspaceProps {
   onStrategiesChanged: () => void;
   portfolios: Portfolio[];
   realtime: boolean;
+  t: Translation;
 }
 
 export interface StrategyRunResult {
@@ -34,6 +36,7 @@ export default function BacktestWorkspace({
   onStrategiesChanged,
   portfolios,
   realtime,
+  t,
 }: BacktestWorkspaceProps) {
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
@@ -163,7 +166,7 @@ export default function BacktestWorkspace({
               : "border-transparent text-tv-muted hover:text-tv-text"
           }`}
         >
-          Backtest
+          {t.backtest}
         </button>
         <button
           onClick={() => setActiveTab("optimizer")}
@@ -173,12 +176,12 @@ export default function BacktestWorkspace({
               : "border-transparent text-tv-muted hover:text-tv-text"
           }`}
         >
-          Optimizer
+          {t.optimizer}
         </button>
       </div>
 
       {activeTab === "optimizer" ? (
-        <OptimizerPanel strategies={strategies} availableSymbols={availableSymbols} realtime={realtime} />
+        <OptimizerPanel strategies={strategies} availableSymbols={availableSymbols} realtime={realtime} t={t} />
       ) : (
         <>
           {/* Config Bar */}
@@ -206,6 +209,7 @@ export default function BacktestWorkspace({
             onSourceModeChange={setSourceMode}
             selectedPortfolioId={selectedPortfolioId}
             onPortfolioChange={setSelectedPortfolioId}
+            t={t}
           />
 
           {/* Content */}
@@ -247,7 +251,7 @@ export default function BacktestWorkspace({
               {/* Results */}
               {!loading && allResults.length > 0 && (
                 <>
-                  <BacktestOverview strategies={strategyOverviewData} />
+                  <BacktestOverview strategies={strategyOverviewData} t={t} />
                   <BacktestResultsGrid
                     allResults={allResults.map((r) => ({
                       strategyName: r.strategyName,
@@ -257,6 +261,7 @@ export default function BacktestWorkspace({
                     }))}
                     selectedResult={selectedResult}
                     onSelectResult={setSelectedResult}
+                    t={t}
                   />
                 </>
               )}
@@ -268,6 +273,7 @@ export default function BacktestWorkspace({
                 result={selectedResultData}
                 strategyName={selectedResult.strategyName}
                 onClose={() => setSelectedResult(null)}
+                t={t}
               />
             )}
           </div>

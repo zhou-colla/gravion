@@ -387,6 +387,7 @@ export default function App() {
             strategies={strategies}
             selectedStrategies={scannerStrategies}
             onStrategiesChange={setScannerStrategies}
+            label={t.signalStrategies}
             t={t}
           />
         </div>

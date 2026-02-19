@@ -17,6 +17,7 @@ import type {
   FinancialSummary,
   YFinanceFundamentals,
 } from "../types/stock";
+import type { Translation } from "../i18n";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -215,22 +216,22 @@ function MetricCard({ label, value, valueClass = "text-tv-text" }: { label: stri
   );
 }
 
-function KeyRatiosPanel({ summary }: { summary: FinancialSummary }) {
+function KeyRatiosPanel({ summary, t }: { summary: FinancialSummary; t: Translation }) {
   return (
     <div className="flex-1 p-3 grid grid-cols-2 gap-2 content-start">
-      <MetricCard label="Latest EPS" value={summary.latest_eps?.toFixed(2) ?? "--"} />
+      <MetricCard label={t.latestEps} value={summary.latest_eps?.toFixed(2) ?? "--"} />
       <MetricCard
-        label="Revenue Growth (YoY)"
+        label={t.revenueGrowthYoY}
         value={fmtPct(summary.revenue_growth_pct)}
         valueClass={pctColor(summary.revenue_growth_pct)}
       />
       <MetricCard
-        label="Profit Growth (YoY)"
+        label={t.profitGrowthYoY}
         value={fmtPct(summary.profit_growth_pct)}
         valueClass={pctColor(summary.profit_growth_pct)}
       />
       <MetricCard
-        label="Avg Profit Margin"
+        label={t.avgProfitMargin}
         value={summary.avg_profit_margin_pct != null ? `${summary.avg_profit_margin_pct.toFixed(1)}%` : "--"}
         valueClass={
           summary.avg_profit_margin_pct != null
@@ -240,19 +241,19 @@ function KeyRatiosPanel({ summary }: { summary: FinancialSummary }) {
             : "text-tv-muted"
         }
       />
-      <MetricCard label="Latest Revenue" value={fmtCny(summary.latest_revenue)} />
-      <MetricCard label="Latest Net Profit" value={fmtCny(summary.latest_profit)} />
+      <MetricCard label={t.latestRevenue} value={fmtCny(summary.latest_revenue)} />
+      <MetricCard label={t.latestNetProfit} value={fmtCny(summary.latest_profit)} />
     </div>
   );
 }
 
 // ── US Fundamentals Panel ──────────────────────────────────────────────────
 
-function USFundamentalsPanel({ fundamentals }: { fundamentals: YFinanceFundamentals }) {
+function USFundamentalsPanel({ fundamentals, t }: { fundamentals: YFinanceFundamentals; t: Translation }) {
   return (
     <div className="col-span-2 bg-tv-panel border border-tv-border rounded-lg overflow-hidden">
       <div className="h-8 border-b border-tv-border flex items-center px-3">
-        <span className="text-xs font-medium text-tv-muted">Fundamentals (Yahoo Finance)</span>
+        <span className="text-xs font-medium text-tv-muted">{t.fundamentalsYahooFinance}</span>
         {fundamentals.sector && (
           <span className="ml-2 text-[10px] bg-tv-blue/10 text-tv-blue border border-tv-blue/20 rounded px-1.5 py-0.5">
             {fundamentals.sector}
@@ -263,20 +264,20 @@ function USFundamentalsPanel({ fundamentals }: { fundamentals: YFinanceFundament
         )}
       </div>
       <div className="p-3 grid grid-cols-4 gap-2">
-        <MetricCard label="P/E Ratio" value={fundamentals.pe_ratio?.toFixed(2) ?? "--"} />
-        <MetricCard label="Market Cap" value={fmtUsd(fundamentals.market_cap)} />
-        <MetricCard label="Total Revenue" value={fmtUsd(fundamentals.total_revenue)} />
+        <MetricCard label={t.peRatio} value={fundamentals.pe_ratio?.toFixed(2) ?? "--"} />
+        <MetricCard label={t.marketCap} value={fmtUsd(fundamentals.market_cap)} />
+        <MetricCard label={t.totalRevenue} value={fmtUsd(fundamentals.total_revenue)} />
         <MetricCard
-          label="Revenue Growth"
+          label={t.revenueGrowth}
           value={fundamentals.revenue_growth != null ? fmtPct(fundamentals.revenue_growth * 100) : "--"}
           valueClass={pctColor(fundamentals.revenue_growth != null ? fundamentals.revenue_growth * 100 : null)}
         />
         <MetricCard
-          label="Gross Margin"
+          label={t.grossMargin}
           value={fundamentals.gross_margins != null ? `${(fundamentals.gross_margins * 100).toFixed(1)}%` : "--"}
         />
         <MetricCard
-          label="Operating Margin"
+          label={t.operatingMargin}
           value={fundamentals.operating_margins != null ? `${(fundamentals.operating_margins * 100).toFixed(1)}%` : "--"}
           valueClass={
             fundamentals.operating_margins != null
@@ -302,11 +303,13 @@ function PriceChartSection({
   loading,
   error,
   symbol,
+  t,
 }: {
   detail: StockDetail | null;
   loading: boolean;
   error: string | null;
   symbol: string;
+  t: Translation;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -368,11 +371,11 @@ function PriceChartSection({
               <span className="flex items-center"><div className="w-2 h-2 rounded-full bg-[#2962FF] mr-1" />50MA</span>
               <span className="flex items-center"><div className="w-2 h-2 rounded-full bg-[#F6A90E] mr-1" />100MA</span>
               {detail.current_rsi != null && (
-                <span>RSI <span className={`font-mono font-medium ${detail.current_rsi < 30 ? "text-tv-green" : detail.current_rsi > 70 ? "text-tv-red" : "text-tv-text"}`}>{detail.current_rsi.toFixed(1)}</span></span>
+                <span>{t.rsi} <span className={`font-mono font-medium ${detail.current_rsi < 30 ? "text-tv-green" : detail.current_rsi > 70 ? "text-tv-red" : "text-tv-text"}`}>{detail.current_rsi.toFixed(1)}</span></span>
               )}
             </div>
             {detail.from_cache && (
-              <span className="text-[10px] text-tv-muted bg-tv-base border border-tv-border/50 rounded px-1.5 py-0.5 shrink-0">cached</span>
+              <span className="text-[10px] text-tv-muted bg-tv-base border border-tv-border/50 rounded px-1.5 py-0.5 shrink-0">{t.cached}</span>
             )}
           </>
         )}
@@ -383,7 +386,7 @@ function PriceChartSection({
               className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
                 activeRange === r ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text hover:bg-tv-hover"
               }`}>
-              {r}
+              {r === "1M" ? t.range1M : r === "3M" ? t.range3M : r === "6M" ? t.range6M : r === "1Y" ? t.range1Y : r === "2Y" ? t.range2Y : r === "5Y" ? t.range5Y : t.rangeAll}
             </button>
           ))}
         </div>
@@ -395,19 +398,19 @@ function PriceChartSection({
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex items-center gap-2 bg-tv-panel border border-tv-border rounded px-3 py-2">
               <Spinner />
-              <span className="text-xs text-tv-muted">Loading chart…</span>
+              <span className="text-xs text-tv-muted">{t.loadingChart}</span>
             </div>
           </div>
         ) : error ? (
           <div className="absolute inset-0 flex items-center justify-center text-center p-4">
             <div>
-              <p className="text-tv-red text-xs font-medium mb-1">Chart unavailable</p>
+              <p className="text-tv-red text-xs font-medium mb-1">{t.chartUnavailable}</p>
               <p className="text-tv-muted text-xs">{error}</p>
             </div>
           </div>
         ) : !detail ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-tv-muted text-xs">Enter a symbol above to load the chart</p>
+            <p className="text-tv-muted text-xs">{t.enterSymbolInstruction}</p>
           </div>
         ) : (
           <div ref={containerRef} className="w-full h-full" />
@@ -423,9 +426,10 @@ interface AnalysisPanelProps {
   portfolios: Portfolio[];
   settings: AppSettings & { tushare_api_key?: string };
   realtimeFetch: boolean;
+  t: Translation;
 }
 
-export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: AnalysisPanelProps) {
+export default function AnalysisPanel({ portfolios, settings, realtimeFetch, t }: AnalysisPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [committedSymbol, setCommittedSymbol] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -599,7 +603,7 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => inputValue && setSuggestions.length > 0 && setShowSuggestions(true)}
-            placeholder="Symbol (e.g. 600519, AAPL)"
+            placeholder={t.symbolPlaceholder}
             className="bg-tv-panel text-tv-text text-sm border border-tv-border rounded px-3 py-1.5 outline-none focus:border-tv-blue w-52 placeholder:text-tv-muted/60"
           />
           {showSuggestions && suggestions.length > 0 && (
@@ -622,7 +626,7 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
 
         {/* Date range */}
         <div className="flex items-center gap-1.5 text-xs text-tv-muted">
-          <span>From</span>
+          <span>{t.from}</span>
           <input
             type="date"
             value={startDate}
@@ -630,7 +634,7 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
             className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue"
             style={{ colorScheme: "dark" }}
           />
-          <span>to</span>
+          <span>{t.to}</span>
           <input
             type="date"
             value={endDate}
@@ -649,14 +653,14 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
           {(priceLoading || financialsLoading) ? (
             <>
               <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>Analyzing…</span>
+              <span>{t.analyzing}</span>
             </>
           ) : (
             <>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <span>Analyze</span>
+              <span>{t.analyze}</span>
             </>
           )}
         </button>
@@ -664,7 +668,7 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
         {/* Realtime status */}
         <div className="ml-auto flex items-center gap-1.5 text-xs text-tv-muted">
           <div className={`w-1.5 h-1.5 rounded-full ${realtimeFetch ? "bg-tv-green animate-pulse" : "bg-tv-muted"}`} />
-          {realtimeFetch ? "Realtime ON" : "Cache only"}
+          {realtimeFetch ? t.realtimeOn : t.cacheOnly}
         </div>
       </div>
 
@@ -676,6 +680,7 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
           loading={priceLoading}
           error={priceError}
           symbol={committedSymbol}
+          t={t}
         />
 
         {/* Financial data section */}
@@ -688,12 +693,12 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="text-tv-text text-sm font-medium mb-1">Stock Analysis Dashboard</h3>
+            <h3 className="text-tv-text text-sm font-medium mb-1">{t.stockAnalysisDashboard}</h3>
             <p className="text-tv-muted text-xs max-w-xs">
-              Enter a stock symbol above and click Analyze to load the price chart and financial statements.
+              {t.enterSymbolInstruction}
             </p>
             <p className="text-tv-muted/60 text-xs mt-2">
-              CN stocks (e.g. 600519) use Tushare income data · US stocks (e.g. AAPL) use Yahoo Finance fundamentals
+              {t.stockDataHint}
             </p>
           </div>
         ) : financialsLoading ? (
@@ -722,11 +727,11 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
                 d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
             </svg>
             <div>
-              <p className="text-tv-red text-xs font-medium">Financial data unavailable</p>
+              <p className="text-tv-red text-xs font-medium">{t.financialDataUnavailable}</p>
               <p className="text-tv-muted text-xs mt-0.5">{financialsError}</p>
               {!realtimeFetch && (
                 <p className="text-tv-muted text-xs mt-1">
-                  Enable <strong className="text-tv-text">Realtime Fetch</strong> in the top bar to download data.
+                  {t.enableRealtimeFetch}
                 </p>
               )}
             </div>
@@ -735,12 +740,12 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
           /* US stock: yfinance fundamentals */
           <div className="grid grid-cols-2 gap-4">
             {financials.yfinance_fundamentals ? (
-              <USFundamentalsPanel fundamentals={financials.yfinance_fundamentals} />
+              <USFundamentalsPanel fundamentals={financials.yfinance_fundamentals} t={t} />
             ) : (
               <div className="col-span-2">
                 <NoDataCard
-                  message="No fundamentals data"
-                  hint={realtimeFetch ? "Yahoo Finance returned no data for this symbol." : "Enable Realtime Fetch to load US stock fundamentals."}
+                  message={t.noFundamentalsData}
+                  hint={realtimeFetch ? t.yahooNoData : t.enableRealtimeForUS}
                 />
               </div>
             )}
@@ -748,28 +753,28 @@ export default function AnalysisPanel({ portfolios, settings, realtimeFetch }: A
         ) : financials && financials.is_cn_stock && financials.statements.length > 0 ? (
           /* CN stock: full financial charts */
           <div className="grid grid-cols-2 gap-4">
-            <ChartCard title="Revenue (Quarterly)">
+            <ChartCard title={t.revenueQuarterly}>
               <RevenueBarChart statements={financials.statements} />
             </ChartCard>
-            <ChartCard title="EPS — Basic (green) · Diluted (blue dashed)">
+            <ChartCard title={t.epsChartTitle}>
               <EPSLineChart statements={financials.statements} />
             </ChartCard>
-            <ChartCard title="Net Profit Margin % — ≥20% green · ≥10% amber · <10% red">
+            <ChartCard title={t.profitMarginChartTitle}>
               <ProfitMarginChart statements={financials.statements} />
             </ChartCard>
-            <ChartCard title="Key Metrics">
+            <ChartCard title={t.keyMetrics}>
               {financials.summary ? (
-                <KeyRatiosPanel summary={financials.summary} />
+                <KeyRatiosPanel summary={financials.summary} t={t} />
               ) : (
-                <NoDataCard message="No summary data" />
+                <NoDataCard message={t.noSummaryData} />
               )}
             </ChartCard>
           </div>
         ) : financials ? (
           /* CN stock: no data */
           <NoDataCard
-            message={financials.error || "No financial data available"}
-            hint={!realtimeFetch ? "Enable Realtime Fetch to download financial statements." : undefined}
+            message={financials.error || t.noFinancialData}
+            hint={!realtimeFetch ? t.enableRealtimeForCN : undefined}
           />
         ) : null}
       </div>

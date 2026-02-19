@@ -15,16 +15,25 @@ export const zh = {
   
   // Scanner
   results: "结果",
-  addFilter: "+ 添加过滤器",
-  buildCustomFilter: "构建自定义过滤器",
+  addFilter: "+ 添加过滤条件",
+  buildCustomFilter: "构建自定义过滤条件",
   toggleOperator: "切换 AND/OR",
-  clearAllFilters: "清除所有过滤器",
+  clearAllFilters: "清除所有过滤条件",
   export: "导出",
   source: "数据源",
   noScanResults: "无扫描结果",
   enableRealtimeFetch: "启用实时获取并点击获取并运行以下载新数据。",
   screenCachedData: "或点击运行扫描器以筛选缓存数据。",
   signalStrategies: "选股策略",
+  
+  // DataGrid
+  ticker: "股票代码",
+  price: "价格",
+  changePercent: "涨跌幅 %",
+  dataTime: "数据时间",
+  primarySignal: "主要信号",
+  signalStatus: "买卖信号",
+  yoyGrowth: "同比增长",
   
   // Loading states
   fetchingData: "正在获取数据...",
@@ -53,7 +62,6 @@ export const zh = {
   transactionLog: "交易日志",
   date: "日期",
   type: "类型",
-  price: "价格",
   shares: "股数",
   pnl: "盈亏",
   

@@ -265,6 +265,10 @@ async def fetch_data(body: Optional[FetchRequest] = None):
 
                 for sym in symbols:
                     try:
+                        # Always fetch historical data first, regardless of current price data availability
+                        start_date, end_date = resolve_date_range(None, None, "1y")
+                        ensure_history(sym, start_date, end_date)
+                        
                         ts_code = _to_ts_code(sym)
                         is_cn = _is_cn_stock(sym)
                         if is_cn:
@@ -313,6 +317,7 @@ async def fetch_data(body: Optional[FetchRequest] = None):
                             last_fetched=fetch_time,
                         )
                         fetched_count += 1
+                        
                     except Exception as e:
                         errors.append(f"{sym}: {str(e)}")
 

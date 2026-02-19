@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, SeriesType, Time } from "lightweight-charts";
 import type { StockDetail, StrategyInfo, TradeEntry } from "../types/stock";
+import type { Translation } from "../i18n";
 
 type RangeKey = "1M" | "3M" | "6M" | "1Y" | "2Y" | "5Y" | "All";
 const RANGES: RangeKey[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "All"];
@@ -18,6 +19,7 @@ interface ChartPanelProps {
   highlightedTrade: TradeEntry | null;
   isLoading?: boolean;
   loadingSymbol?: string;
+  t: Translation;
 }
 
 export default function ChartPanel({
@@ -31,6 +33,7 @@ export default function ChartPanel({
   highlightedTrade,
   isLoading = false,
   loadingSymbol,
+  t,
 }: ChartPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -178,7 +181,7 @@ export default function ChartPanel({
             </span>
             {detail.current_rsi !== null && detail.current_rsi !== undefined && (
               <span className="flex items-center text-tv-muted">
-                RSI <span className={`ml-1 font-mono font-medium ${
+                {t.rsi} <span className={`ml-1 font-mono font-medium ${
                   detail.current_rsi < 30 ? "text-tv-green" : detail.current_rsi > 70 ? "text-tv-red" : "text-tv-text"
                 }`}>{detail.current_rsi.toFixed(1)}</span>
               </span>
@@ -186,7 +189,7 @@ export default function ChartPanel({
           </div>
           {detail.from_cache && (
             <span className="text-[10px] text-tv-muted bg-tv-panel border border-tv-border/50 rounded px-1.5 py-0.5 shrink-0">
-              cached
+              {t.cached}
             </span>
           )}
           <div className="h-4 w-px bg-tv-border shrink-0" />
@@ -196,7 +199,7 @@ export default function ChartPanel({
             onChange={(e) => onStrategyChange(e.target.value)}
             className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer shrink-0"
           >
-            <option value="">Strategy...</option>
+            <option value="">{t.strategy}...</option>
             {strategies.map((s) => (
               <option key={s.name} value={s.name}>
                 {s.name}
@@ -222,19 +225,76 @@ export default function ChartPanel({
 
         {/* Range buttons */}
         <div className="flex items-center gap-0.5 mx-2 shrink-0">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => applyRange(r)}
-              className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
-                activeRange === r
-                  ? "bg-tv-blue text-white"
-                  : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
+          <button
+            onClick={() => applyRange("1M")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "1M"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range1M}
+          </button>
+          <button
+            onClick={() => applyRange("3M")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "3M"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range3M}
+          </button>
+          <button
+            onClick={() => applyRange("6M")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "6M"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range6M}
+          </button>
+          <button
+            onClick={() => applyRange("1Y")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "1Y"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range1Y}
+          </button>
+          <button
+            onClick={() => applyRange("2Y")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "2Y"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range2Y}
+          </button>
+          <button
+            onClick={() => applyRange("5Y")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "5Y"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.range5Y}
+          </button>
+          <button
+            onClick={() => applyRange("All")}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition ${
+              activeRange === "All"
+                ? "bg-tv-blue text-white"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+          >
+            {t.rangeAll}
+          </button>
         </div>
 
         {onClose && (
@@ -255,7 +315,7 @@ export default function ChartPanel({
           <div className="absolute inset-0 bg-tv-base/60 flex items-center justify-center z-10 pointer-events-none">
             <div className="flex items-center space-x-2 bg-tv-panel border border-tv-border rounded px-3 py-2">
               <div className="w-4 h-4 border-2 border-tv-blue border-t-transparent rounded-full animate-spin" />
-              <span className="text-xs text-tv-muted">Loading {loadingSymbol}...</span>
+              <span className="text-xs text-tv-muted">{t.loadingChart.replace('{{symbol}}', loadingSymbol || '')}</span>
             </div>
           </div>
         )}

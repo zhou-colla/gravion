@@ -1,29 +1,29 @@
 export const zh = {
   // Header
   title: "Gravion v2.0",
-  realtime: "实时",
-  fetchAndRun: "获取并运行",
-  runScanner: "运行扫描器",
+  realtime: "实时获取数据",
+  fetchAndRun: "更新数据并运行",
+  runScanner: "选股",
   
   // Sidebar
-  scanner: "扫描器",
-  backtest: "回测工作区",
+  scanner: "选股器",
+  backtest: "回测",
   portfolios: "投资组合",
   analysis: "股票分析",
   settings: "设置",
-  visualBuilder: "可视化策略构建器",
+  visualBuilder: "新增策略",
   
   // Scanner
   results: "结果",
-  addFilter: "+ 添加过滤器",
+  addFilter: "添加筛选条件",
   buildCustomFilter: "构建自定义过滤器",
   toggleOperator: "切换 AND/OR",
-  clearAllFilters: "清除所有过滤器",
+  clearAllFilters: "清除所有筛选条件",
   export: "导出",
   source: "数据源",
   noScanResults: "无扫描结果",
   enableRealtimeFetch: "启用实时获取并点击获取并运行以下载新数据。",
-  screenCachedData: "或点击运行扫描器以筛选缓存数据。",
+  screenCachedData: "或点击选股以筛选缓存数据。",
   
   // Loading states
   fetchingData: "正在获取数据...",
@@ -83,7 +83,7 @@ export const zh = {
   chooseDataSource: "选择股票市场数据的获取来源。",
   yahooFinance: "雅虎财经 (免费)",
   moomooOpenD: "Moomoo OpenD (实时)",
-  tushare: "Tushare (中国和美国股票)",
+  tushare: "Tushare (中国股票)",
   moomooNotConfigured: "Moomoo OpenD 网关未配置。在网关安装并连接之前，数据获取将失败。",
   tushareApiKeyRequired: "需要 Tushare API 密钥。在 API 密钥配置之前，数据获取将失败。",
   enterTushareApiKey: "输入您的 Tushare API 密钥",

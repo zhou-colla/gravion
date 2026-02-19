@@ -8,11 +8,14 @@ import VisualBuilder from "./components/VisualBuilder";
 import BacktestWorkspace from "./components/BacktestWorkspace";
 import SettingsPanel from "./components/SettingsPanel";
 import PortfolioManager from "./components/PortfolioManager";
+import AnalysisPanel from "./components/AnalysisPanel";
 import SourceSelector from "./components/SourceSelector";
 import type { SourceSelection } from "./components/SourceSelector";
 import StrategySelector from "./components/StrategySelector";
 import FilterBuilder from "./components/FilterBuilder";
 import type { FilterInfo } from "./types/stock";
+import { getTranslation, defaultLanguage, getSupportedLanguages } from "./i18n";
+import type { Language } from "./i18n";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(0) + "MB";
@@ -28,12 +31,24 @@ export default function App() {
   const [backendStatus, setBackendStatus] = useState<"unknown" | "connected" | "disconnected">("unknown");
   const [realtimeFetch, setRealtimeFetch] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo>({ path: "gravion.db", size_bytes: 0, stock_count: 0 });
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLang = localStorage.getItem('gravion-language');
+    return (savedLang as Language) || defaultLanguage;
+  });
+  const [t, setT] = useState(getTranslation(language));
 
   // Phase 3 state
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [stockDetail, setStockDetail] = useState<StockDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Language management
+  useEffect(() => {
+    const newTranslation = getTranslation(language);
+    setT(newTranslation);
+    localStorage.setItem('gravion-language', language);
+  }, [language]);
 
   // Phase 4 state
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
@@ -45,11 +60,11 @@ export default function App() {
   const backtestAbortRef = useRef<AbortController | null>(null);
 
   // View switching
-  const [activeView, setActiveView] = useState<"scanner" | "backtest" | "portfolios" | "settings">("scanner");
+  const [activeView, setActiveView] = useState<"scanner" | "backtest" | "portfolios" | "analysis" | "settings">("scanner");
 
   // Phase 5 state
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "" });
+  const [settings, setSettings] = useState<AppSettings & { tushare_api_key?: string }>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "", tushare_api_key: undefined });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
   const [scannerStrategies, setScannerStrategies] = useState<string[]>([]);
   const [comparisonStrategies, setComparisonStrategies] = useState<string[]>([]);
@@ -58,6 +73,7 @@ export default function App() {
   const [filterOperator, setFilterOperator] = useState<"AND" | "OR">("AND");
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [showFilterBuilder, setShowFilterBuilder] = useState(false);
+  const [sourceLabel, setSourceLabel] = useState("Yahoo Finance (yfinance)");
 
   const checkHealth = async () => {
     try {
@@ -117,6 +133,7 @@ export default function App() {
         data_source: json.data_source || "yahoo_finance",
         global_start_date: json.global_start_date || "",
         global_end_date: json.global_end_date || "",
+        tushare_api_key: json.tushare_api_key,
       });
     } catch {
       /* silent */
@@ -180,6 +197,7 @@ export default function App() {
         setStocks(json.data);
         setFilterTags(json.filter_tags || []);
         setComparisonStrategies(json.comparison_strategies || []);
+        if (json.source) setSourceLabel(json.source);
         setBackendStatus("connected");
       } else {
         setError(json.error || "Screen returned no data");
@@ -352,7 +370,9 @@ export default function App() {
       <header className="h-14 bg-tv-base border-b border-tv-border flex items-center px-4 select-none justify-between">
         <div className="flex items-center h-full space-x-4">
           <div className="font-bold text-lg tracking-tight text-white">
-            Gravion{" "}
+            Gravion{
+              " "
+            }
             <span className="text-xs text-tv-blue font-normal ml-1">v2.0</span>
           </div>
           <div className="h-6 w-px bg-tv-border" />
@@ -360,20 +380,41 @@ export default function App() {
             portfolios={portfolios}
             selectedSource={scannerSource}
             onSourceChange={setScannerSource}
+            t={t}
           />
           <div className="h-6 w-px bg-tv-border" />
           <StrategySelector
             strategies={strategies}
             selectedStrategies={scannerStrategies}
             onStrategiesChange={setScannerStrategies}
+            label={t.signalStrategies}
+            t={t}
           />
         </div>
 
         <div className="flex items-center space-x-6">
-          {/* Realtime Fetch Toggle */}
+          {/* Language Toggle */}
           <div className="flex items-center cursor-pointer group">
             <span className="text-xs text-tv-muted font-medium mr-3 group-hover:text-tv-text transition">
-              Realtime Fetch
+              {t.language}
+            </span>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer"
+            >
+              {getSupportedLanguages().map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Realtime Toggle */}
+          <div className="flex items-center cursor-pointer group">
+            <span className="text-xs text-tv-muted font-medium mr-3 group-hover:text-tv-text transition">
+              {t.realtime}
             </span>
             <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
               <input
@@ -397,14 +438,14 @@ export default function App() {
                 <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                {fetching ? "Fetching..." : "Screening..."}
+                {fetching ? t.fetchingData : t.screeningData}
               </>
             ) : realtimeFetch ? (
               <>
                 <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Fetch &amp; Run
+                {t.fetchAndRun}
               </>
             ) : (
               <>
@@ -412,7 +453,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Run Scanner
+                {t.runScanner}
               </>
             )}
           </button>
@@ -429,7 +470,7 @@ export default function App() {
             className={`p-2 rounded transition cursor-pointer ${
               activeView === "scanner" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
             }`}
-            title="Scanner"
+            title={t.scanner}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -441,7 +482,7 @@ export default function App() {
             className={`p-2 rounded transition cursor-pointer ${
               activeView === "backtest" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
             }`}
-            title="Backtest Workspace"
+            title={t.backtest}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -453,10 +494,22 @@ export default function App() {
             className={`p-2 rounded transition cursor-pointer ${
               activeView === "portfolios" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
             }`}
-            title="Portfolios"
+            title={t.portfolios}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </button>
+          {/* Analysis */}
+          <button
+            onClick={() => setActiveView("analysis")}
+            className={`p-2 rounded transition cursor-pointer ${
+              activeView === "analysis" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
+            }`}
+            title={t.analysis}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
             </svg>
           </button>
           {/* Settings */}
@@ -465,7 +518,7 @@ export default function App() {
             className={`p-2 rounded transition cursor-pointer ${
               activeView === "settings" ? "text-tv-blue bg-tv-panel" : "text-tv-muted hover:text-tv-text hover:bg-tv-panel"
             }`}
-            title="Settings"
+            title={t.settings}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -476,7 +529,7 @@ export default function App() {
           <button
             onClick={() => setShowVisualBuilder(true)}
             className="p-2 text-tv-muted hover:text-tv-text hover:bg-tv-panel rounded transition cursor-pointer"
-            title="Visual Strategy Builder"
+            title={t.visualBuilder}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
@@ -490,7 +543,7 @@ export default function App() {
             <main className="flex-1 flex flex-col bg-tv-base relative min-w-0">
               {/* Filter Bar */}
               <div className="h-10 border-b border-tv-border flex items-center px-4 space-x-3 bg-tv-base text-xs shrink-0">
-                <span className="text-tv-text font-bold shrink-0">Results: {stocks.length}</span>
+                <span className="text-tv-text font-bold shrink-0">{t.results}: {stocks.length}</span>
                 <div className="h-4 w-px bg-tv-border" />
                 {/* Filter selector + chips */}
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
@@ -504,7 +557,7 @@ export default function App() {
                     }}
                     className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-0.5 outline-none focus:border-tv-blue cursor-pointer"
                   >
-                    <option value="">+ Add Filter</option>
+                    <option value="">{t.addFilter}</option>
                     {filters.filter((f) => !activeFilters.includes(f.name)).map((f) => (
                       <option key={f.name} value={f.name}>{f.name}</option>
                     ))}
@@ -512,7 +565,7 @@ export default function App() {
                   <button
                     onClick={() => setShowFilterBuilder(true)}
                     className="text-tv-muted hover:text-tv-blue transition cursor-pointer p-0.5"
-                    title="Build custom filter"
+                    title={t.buildCustomFilter}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -525,7 +578,7 @@ export default function App() {
                         <button
                           onClick={() => setFilterOperator((prev) => prev === "AND" ? "OR" : "AND")}
                           className="text-[9px] text-tv-blue/60 hover:text-tv-blue mr-1 cursor-pointer font-bold"
-                          title="Toggle AND/OR"
+                          title={t.toggleOperator}
                         >
                           {filterOperator}
                         </button>
@@ -555,7 +608,7 @@ export default function App() {
                     <button
                       onClick={() => { setActiveFilters([]); setFilterTags([]); }}
                       className="text-tv-muted hover:text-tv-red transition cursor-pointer shrink-0"
-                      title="Clear all filters"
+                      title={t.clearAllFilters}
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -565,10 +618,10 @@ export default function App() {
                 </div>
                 {error && <span className="text-tv-red ml-2 shrink-0">{error}</span>}
                 <div className="ml-auto flex items-center space-x-4 text-tv-muted shrink-0">
-                  <ExportButton stocks={stocks} disabled={isBusy} />
+                  <ExportButton stocks={stocks} disabled={isBusy} t={t} />
                   <div className="h-4 w-px bg-tv-border" />
                   <span>
-                    Source: <span className="text-tv-text font-medium">Yahoo Finance (yfinance)</span>
+                    {t.source}: <span className="text-tv-text font-medium">{sourceLabel}</span>
                   </span>
                 </div>
               </div>
@@ -588,6 +641,7 @@ export default function App() {
                     highlightedTrade={highlightedTrade}
                     isLoading={detailLoading}
                     loadingSymbol={selectedSymbol ?? undefined}
+                    t={t}
                   />
                 )}
 
@@ -596,7 +650,7 @@ export default function App() {
                   <div className="border-b border-tv-border flex items-center justify-center" style={{ height: "45%" }}>
                     <div className="text-center">
                       <div className="inline-block w-6 h-6 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-2" />
-                      <p className="text-tv-muted text-xs">Loading chart for {selectedSymbol}...</p>
+                      <p className="text-tv-muted text-xs">{t.loadingChart.replace('{{symbol}}', selectedSymbol || '')}</p>
                     </div>
                   </div>
                 )}
@@ -610,9 +664,9 @@ export default function App() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                       </div>
-                      <p className="text-tv-red text-xs font-medium mb-1">Chart unavailable</p>
+                      <p className="text-tv-red text-xs font-medium mb-1">{t.chartUnavailable}</p>
                       <p className="text-tv-muted text-xs">{detailError}</p>
-                      <p className="text-tv-muted text-xs mt-2">Enable <strong className="text-tv-text">Realtime Fetch</strong> and click <strong className="text-tv-blue">Fetch &amp; Run</strong> to download data.</p>
+                      <p className="text-tv-muted text-xs mt-2">{t.enableRealtimeFetchError.replace('Realtime Fetch', t.realtime).replace('Fetch & Run', t.fetchAndRun)}</p>
                     </div>
                   </div>
                 )}
@@ -625,8 +679,8 @@ export default function App() {
                         <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
                         <p className="text-tv-muted">
                           {fetching
-                            ? "Fetching NASDAQ 100 data from Yahoo Finance..."
-                            : "Screening cached data..."}
+                            ? t.fetchingData
+                            : t.screeningData}
                         </p>
                       </div>
                     </div>
@@ -638,19 +692,18 @@ export default function App() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-medium mb-2 text-tv-text">No Scan Results</h3>
+                        <h3 className="text-lg font-medium mb-2 text-tv-text">{t.noScanResults}</h3>
                         <p className="text-tv-muted mb-1 text-xs">
-                          Enable <strong className="text-tv-text">Realtime Fetch</strong> and click{" "}
-                          <strong className="text-tv-blue">Fetch &amp; Run</strong> to download fresh data.
+                          {t.enableRealtimeFetch}
                         </p>
                         <p className="text-tv-muted mb-4 text-xs">
-                          Or click <strong className="text-tv-blue">Run Scanner</strong> to screen cached data.
+                          {t.screenCachedData}
                         </p>
                         <button
                           onClick={runAction}
                           className="bg-tv-blue hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium transition cursor-pointer"
                         >
-                          {realtimeFetch ? "Fetch & Run" : "Run Scanner"}
+                          {realtimeFetch ? t.fetchAndRun : t.runScanner}
                         </button>
                       </div>
                     </div>
@@ -660,6 +713,7 @@ export default function App() {
                       selectedSymbol={selectedSymbol}
                       onSelectStock={loadStockDetail}
                       comparisonStrategies={comparisonStrategies}
+                      t={t}
                     />
                   )}
                 </div>
@@ -674,14 +728,14 @@ export default function App() {
                         backendStatus === "connected" ? "bg-tv-green" : "bg-tv-red"
                       }`}
                     />
-                    {backendStatus === "connected" ? "Backend Online" : "Backend Offline"}
+                    {backendStatus === "connected" ? t.backendOnline : t.backendOffline}
                   </span>
                   <span>
-                    Database: <span className="text-tv-text">{dbInfo.path}</span> ({formatBytes(dbInfo.size_bytes)})
+                    {t.database}: <span className="text-tv-text">{dbInfo.path}</span> ({formatBytes(dbInfo.size_bytes)})
                   </span>
                 </div>
                 <div>
-                  Next Auto-Scan: <span className="text-tv-text">Disabled</span>
+                  {t.nextAutoScan}: <span className="text-tv-text">{t.disabled}</span>
                 </div>
               </footer>
             </main>
@@ -705,16 +759,27 @@ export default function App() {
             onOpenVisualBuilder={() => setShowVisualBuilder(true)}
             onStrategiesChanged={loadStrategies}
             portfolios={portfolios}
+            realtime={realtimeFetch}
+            t={t}
           />
         ) : activeView === "portfolios" ? (
           <PortfolioManager
             portfolios={portfolios}
             onPortfoliosChanged={loadPortfolios}
+            t={t}
+          />
+        ) : activeView === "analysis" ? (
+          <AnalysisPanel
+            portfolios={portfolios}
+            settings={settings}
+            realtimeFetch={realtimeFetch}
+            t={t}
           />
         ) : activeView === "settings" ? (
           <SettingsPanel
             settings={settings}
             onSettingsChanged={setSettings}
+            t={t}
           />
         ) : null}
       </div>
@@ -724,6 +789,7 @@ export default function App() {
         <VisualBuilder
           onSave={saveVisualStrategy}
           onClose={() => setShowVisualBuilder(false)}
+          t={t}
         />
       )}
 

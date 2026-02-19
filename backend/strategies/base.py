@@ -39,6 +39,12 @@ class BaseStrategy(ABC):
     def parameters(self) -> dict[str, Any]:
         return {}
 
+    @property
+    def param_meta(self) -> dict[str, dict]:
+        """Parameter metadata for the optimizer UI.
+        Keys are param names; values have: label, type, default, min, max, step."""
+        return {}
+
     @abstractmethod
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add a 'signal' column to df with values: 'BUY', 'SELL', or ''."""

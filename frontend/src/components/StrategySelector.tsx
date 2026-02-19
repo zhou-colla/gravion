@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import type { StrategyInfo } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface StrategySelectorProps {
   strategies: StrategyInfo[];
   selectedStrategies: string[];
   onStrategiesChange: (names: string[]) => void;
   label?: string;
+  t?: Translation;
 }
 
 export default function StrategySelector({
@@ -13,6 +15,7 @@ export default function StrategySelector({
   selectedStrategies,
   onStrategiesChange,
   label = "Signal Strategies",
+  t,
 }: StrategySelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

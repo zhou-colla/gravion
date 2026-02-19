@@ -186,3 +186,108 @@
 * **Feature:** **"Code-First" Development**.
 * **Workflow:** Drop a `.py` file into `gravion/strategies/`. The app auto-loads it.
 * **Power:** Full access to `pandas`, `numpy`, and `talib` for complex logic.
+
+---
+
+## Phase 5: Portfolio Management & Multi-Strategy Comparison (Weeks 9-10)
+**Goal:** Enable users to create custom portfolios and compare multiple strategies side-by-side.
+
+### 5.1 Portfolio Management
+* **Feature:** Create, rename, and delete custom portfolios.
+* **Feature:** Add/remove symbols from portfolios.
+* **UI:** Portfolio selector dropdown in the header.
+* **Endpoint:** `GET /api/portfolios`, `POST /api/portfolios`, `PUT /api/portfolios/{id}/symbols`.
+
+### 5.2 Multi-Strategy Comparison
+* **Feature:** Select multiple strategies for simultaneous evaluation.
+* **UI:** Strategy comparison table showing signals from different strategies for each stock.
+* **Endpoint:** `POST /api/screen` updated to accept multiple strategy names.
+
+---
+
+## Phase 6: Tushare Data Source Integration (Weeks 11-12)
+**Goal:** Add Tushare as a dedicated data source for Chinese and US stock data, with proper API key management and error handling.
+
+### 6.1 Tushare API Integration
+* **Deliverable:** Python backend integration with Tushare API using the `tushare` library.
+* **Feature:** `POST /api/fetch` endpoint updated to support Tushare as a data source.
+* **Data Source:** Tushare API for Chinese and US stock data.
+* **API Key Management:** Secure storage of Tushare API key in the database.
+
+### 6.2 Pagination & Rate Limit Handling
+* **Feature:** Pagination implementation to handle Tushare's 6000 record limit per request.
+* **Performance:** Efficient batch processing of stock data with proper rate limit handling.
+* **Error Handling:** Clear error messages for API key issues and rate limit exceeded errors.
+
+### 6.3 UI Updates for Tushare
+* **Feature:** Tushare added to the data source dropdown menu in settings.
+* **UI:** Tushare API key input field in settings page when Tushare is selected.
+* **Source Label:** "Tushare" displayed on the screener page when Tushare is the active data source.
+
+### 6.4 Chinese Stock Support
+* **Feature:** Ability to fetch and display Chinese stock data using Tushare.
+* **Symbol Format:** Support for Tushare's symbol format (e.g., `600519.SH` for Kweichow Moutai).
+* **Data Fields:** Fetch current price, volume, name, and other relevant fields for Chinese stocks.
+
+### 6.5 No-Fallback Policy
+* **Design Decision:** When Tushare is selected as the data source, no fallback to other data sources.
+* **Error Handling:** Clear error messages for symbols that Tushare doesn't have data for.
+* **User Experience:** Transparent indication of data source being used with no silent fallbacks.
+
+---
+
+## Phase 7: Dedicated Stock Analysis Dashboard (Weeks 13-14)
+**Goal:** Create a comprehensive stock analysis page that provides detailed financial insights using Tushare API, with caching and customizable time ranges.
+
+### 7.1 Dedicated Analysis Page
+* **Deliverable:** New standalone page accessible via the side menu.
+* **UI:** Dedicated dashboard layout with financial data visualization and details.
+* **Navigation:** New side menu icon labeled "Analysis" that opens the dedicated page.
+
+### 7.2 Tushare Financial Data Integration
+* **Deliverable:** Integration with Tushare's `income` API endpoint for financial statements.
+* **Data Fields:** Quarterly income, EPS (basic and diluted), revenue, profit margins, and other key financial metrics.
+* **API Reference:** Uses Tushare's income interface (doc_id=33) for comprehensive financial data.
+* **Authentication:** Leverages existing Tushare API key from settings.
+https://tushare.pro/document/2?doc_id=33
+
+### 7.3 Data Caching System
+* **Feature:** Cache financial data to minimize API calls.
+* **Storage:** New database table for financial statement data with proper indexing.
+* **Invalidation:** Automatic refresh when data becomes stale based on reporting cycles.
+
+### 7.4 Time Range Configuration
+* **Feature:** Time range for financial data aligned with global settings.
+* **UI:** Time range selector on the analysis page that respects global settings defaults.
+* **Endpoint:** `GET /api/stock/{symbol}/financials` with start/end date parameters.
+
+### 7.5 Interactive Dashboard
+* **Feature:** Comprehensive dashboard displaying:
+  * Quarterly income statement trends
+  * EPS growth visualization
+  * Revenue and profit margin analysis
+  * Key financial ratios
+  * Historical financial performance comparison
+  * Stock price chart with customizable display range
+* **Charts:** Line charts for trends, bar charts for quarterly comparisons.
+* **Display Range Customization:** User can specify the time range for the stock price chart, not just limited to the default latest year, for other pages too.
+
+### 7.6 User Interaction
+* **Feature:** Stock symbol input field for users to type any stock index.
+* **Auto-complete:** Symbol suggestion based on available data.
+* **Real-time updates:** Option to refresh data on demand.
+* **Realtime Toggle Integration:** Data fetching only occurs if the global realtime toggle is enabled. If realtime is off and no cached data is available, this will be clearly indicated to the user.
+
+### 7.7 Performance Optimization
+* **Feature:** Efficient data fetching with proper error handling.
+* **Loading states:** Skeleton screens during data retrieval.
+* **Error handling:** Clear messages for API limitations (e.g., insufficient Tushare points).
+
+### 7.8 Success Criteria
+* [ ] User can access the dedicated analysis page via side menu.
+* [ ] User can input any stock symbol and retrieve detailed financial data.
+* [ ] Financial data is cached and only refreshed when needed.
+* [ ] Dashboard displays comprehensive financial metrics with interactive charts.
+* [ ] User can customize the display range for the stock price chart, not just limited to the default latest year.
+* [ ] Time range settings are respected for data retrieval.
+* [ ] Proper error handling for Tushare API limitations and network issues.

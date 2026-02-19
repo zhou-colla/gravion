@@ -23,6 +23,13 @@ class PriceChangeMomentumStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"buy_threshold": self._buy_threshold, "sell_threshold": self._sell_threshold}
 
+    @property
+    def param_meta(self) -> dict[str, dict]:
+        return {
+            "buy_threshold": {"label": "Buy Threshold %", "type": "float", "default": 2.0, "min": 0.5, "max": 5.0, "step": 0.5},
+            "sell_threshold": {"label": "Sell Threshold %", "type": "float", "default": -2.0, "min": -5.0, "max": -0.5, "step": 0.5},
+        }
+
     def compute_intensity(self, df: pd.DataFrame) -> str:
         chg = daily_change_pct(df["close"]).dropna()
         if chg.empty:

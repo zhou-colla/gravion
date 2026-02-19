@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { Portfolio } from "../types/stock";
+import type { Translation } from "../i18n";
 
 export type SourceSelection =
   | { type: "portfolio"; portfolioId: number; portfolioName: string }
@@ -9,9 +10,10 @@ interface SourceSelectorProps {
   portfolios: Portfolio[];
   selectedSource: SourceSelection;
   onSourceChange: (source: SourceSelection) => void;
+  t?: Translation;
 }
 
-export default function SourceSelector({ portfolios, selectedSource, onSourceChange }: SourceSelectorProps) {
+export default function SourceSelector({ portfolios, selectedSource, onSourceChange, t }: SourceSelectorProps) {
   const [open, setOpen] = useState(false);
   const [manualInput, setManualInput] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);

@@ -81,6 +81,33 @@ class StockDatabase:
                 ON stock_history(symbol, date)
             """)
 
+            # Phase 7: Financial statements cache (quarterly income data)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS financial_statements (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol          TEXT NOT NULL,
+                    end_date        TEXT NOT NULL,
+                    ann_date        TEXT,
+                    total_revenue   REAL,
+                    revenue         REAL,
+                    total_profit    REAL,
+                    n_income        REAL,
+                    n_income_attr_p REAL,
+                    operate_profit  REAL,
+                    total_cogs      REAL,
+                    oper_cost       REAL,
+                    income_tax      REAL,
+                    basic_eps       REAL,
+                    diluted_eps     REAL,
+                    fetched_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(symbol, end_date)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_fs_symbol_date
+                ON financial_statements(symbol, end_date)
+            """)
+
             # Phase 5: App settings
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS app_settings (
@@ -324,6 +351,24 @@ class StockDatabase:
         except Exception as e:
             print(f"Error retrieving stock history range for {symbol}: {e}")
             return []
+
+    def get_history_min_max(self, symbol):
+        """Return (min_date, max_date) of cached history as ISO strings, or (None, None) if empty."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT MIN(date), MAX(date) FROM stock_history WHERE symbol = ?",
+                (symbol,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return row[0], row[1]
+            return None, None
+        except Exception as e:
+            print(f"Error getting history min/max for {symbol}: {e}")
+            return None, None
 
     def has_history_coverage(self, symbol, start_date, end_date):
         """Check if stored history spans the requested date range (MIN <= start AND MAX >= end)."""
@@ -587,6 +632,127 @@ class StockDatabase:
         except Exception as e:
             print(f"Error getting stocks by symbols: {e}")
             return []
+
+    # ── Financial statements methods ──
+
+    def save_financial_statements(self, symbol: str, rows: list[dict]) -> int:
+        """Upsert quarterly income statement records. Returns count saved."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO financial_statements
+                    (symbol, end_date, ann_date, total_revenue, revenue, total_profit,
+                     n_income, n_income_attr_p, operate_profit, total_cogs, oper_cost,
+                     income_tax, basic_eps, diluted_eps, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        symbol,
+                        r.get("end_date"),
+                        r.get("ann_date"),
+                        r.get("total_revenue"),
+                        r.get("revenue"),
+                        r.get("total_profit"),
+                        r.get("n_income"),
+                        r.get("n_income_attr_p"),
+                        r.get("operate_profit"),
+                        r.get("total_cogs"),
+                        r.get("oper_cost"),
+                        r.get("income_tax"),
+                        r.get("basic_eps"),
+                        r.get("diluted_eps"),
+                        datetime.now().isoformat(),
+                    )
+                    for r in rows
+                ],
+            )
+            conn.commit()
+            conn.close()
+            return len(rows)
+        except Exception as e:
+            print(f"Error saving financial statements for {symbol}: {e}")
+            return 0
+
+    def get_financial_statements(self, symbol: str,
+                                  start_date: str | None = None,
+                                  end_date: str | None = None) -> list[dict]:
+        """Return financial statement rows ordered by end_date ASC. Dates in YYYYMMDD format."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if start_date and end_date:
+                cursor.execute(
+                    """
+                    SELECT end_date, ann_date, total_revenue, revenue, total_profit,
+                           n_income, n_income_attr_p, operate_profit, total_cogs,
+                           oper_cost, income_tax, basic_eps, diluted_eps
+                    FROM financial_statements
+                    WHERE symbol = ? AND end_date BETWEEN ? AND ?
+                    ORDER BY end_date ASC
+                    """,
+                    (symbol, start_date, end_date),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT end_date, ann_date, total_revenue, revenue, total_profit,
+                           n_income, n_income_attr_p, operate_profit, total_cogs,
+                           oper_cost, income_tax, basic_eps, diluted_eps
+                    FROM financial_statements
+                    WHERE symbol = ?
+                    ORDER BY end_date ASC
+                    """,
+                    (symbol,),
+                )
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f"Error getting financial statements for {symbol}: {e}")
+            return []
+
+    def get_financials_freshness(self, symbol: str) -> dict | None:
+        """Return {max_end_date, fetched_at} for the most recent cached statement."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT MAX(end_date), MAX(fetched_at) FROM financial_statements WHERE symbol = ?",
+                (symbol,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return {"max_end_date": row[0], "fetched_at": row[1]}
+            return None
+        except Exception as e:
+            print(f"Error getting financials freshness for {symbol}: {e}")
+            return None
+
+    def has_fresh_financials(self, symbol: str, max_age_days: int = 90) -> bool:
+        """Return True if financial statements were fetched within max_age_days."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1 FROM financial_statements
+                WHERE symbol = ?
+                  AND julianday('now') - julianday(fetched_at) <= ?
+                LIMIT 1
+                """,
+                (symbol, max_age_days),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            return row is not None
+        except Exception as e:
+            print(f"Error checking financials freshness for {symbol}: {e}")
+            return False
 
     def clear_all(self):
         try:

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { StrategyInfo, Portfolio } from "../types/stock";
+import type { Translation } from "../i18n";
 
 export const STRATEGY_COLORS = ["#2962FF", "#26A69A", "#EF5350", "#FF9800", "#AB47BC"];
 
@@ -27,6 +28,7 @@ interface BacktestConfigBarProps {
   onSourceModeChange: (mode: "manual" | "portfolio") => void;
   selectedPortfolioId: number | null;
   onPortfolioChange: (id: number | null) => void;
+  t: Translation;
 }
 
 export default function BacktestConfigBar({
@@ -53,6 +55,7 @@ export default function BacktestConfigBar({
   onSourceModeChange,
   selectedPortfolioId,
   onPortfolioChange,
+  t,
 }: BacktestConfigBarProps) {
   const [symbolInput, setSymbolInput] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -142,7 +145,7 @@ export default function BacktestConfigBar({
               sourceMode === "manual" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"
             }`}
           >
-            Manual
+            {t.manual}
           </button>
           <button
             onClick={() => onSourceModeChange("portfolio")}
@@ -150,7 +153,7 @@ export default function BacktestConfigBar({
               sourceMode === "portfolio" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"
             }`}
           >
-            Portfolio
+            {t.portfolio}
           </button>
         </div>
 
@@ -165,7 +168,7 @@ export default function BacktestConfigBar({
             }}
             className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue cursor-pointer min-w-[180px]"
           >
-            <option value="">Select portfolio...</option>
+            <option value="">{t.selectPortfolio}...</option>
             {portfolios.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.symbol_count})
@@ -203,7 +206,7 @@ export default function BacktestConfigBar({
               }}
               onFocus={() => setShowDropdown(true)}
               onKeyDown={handleKeyDown}
-              placeholder={selectedSymbols.length === 0 ? "Add tickers (e.g. AAPL, MSFT)..." : "Add more..."}
+              placeholder={selectedSymbols.length === 0 ? t.addTickersExample : t.addMore}
               className="bg-transparent text-tv-text text-xs outline-none flex-1 min-w-[100px] py-0.5"
             />
           </div>
@@ -235,7 +238,7 @@ export default function BacktestConfigBar({
                 usePeriod ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"
               }`}
             >
-              Period
+              {t.period}
             </button>
             <button
               onClick={() => onUsePeriodChange(false)}
@@ -243,7 +246,7 @@ export default function BacktestConfigBar({
                 !usePeriod ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"
               }`}
             >
-              Range
+              {t.range}
             </button>
           </div>
 
@@ -253,10 +256,10 @@ export default function BacktestConfigBar({
               onChange={(e) => onPeriodChange(e.target.value)}
               className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue cursor-pointer"
             >
-              <option value="6mo">6 Months</option>
-              <option value="1y">1 Year</option>
-              <option value="2y">2 Years</option>
-              <option value="5y">5 Years</option>
+              <option value="6mo">{t.period6mo}</option>
+              <option value="1y">{t.period1y}</option>
+              <option value="2y">{t.period2y}</option>
+              <option value="5y">{t.period5y}</option>
             </select>
           ) : (
             <div className="flex items-center gap-1">
@@ -291,7 +294,7 @@ export default function BacktestConfigBar({
             }}
             className="bg-tv-panel text-tv-text text-xs border border-tv-border rounded px-2 py-1.5 outline-none focus:border-tv-blue cursor-pointer"
           >
-            <option value="">+ Strategy…</option>
+            <option value="">+ {t.addStrategy}...</option>
             {strategies.filter((s) => !selectedStrategies.includes(s.name)).map((s) => (
               <option key={s.name} value={s.name}>{s.name}</option>
             ))}
@@ -363,7 +366,7 @@ export default function BacktestConfigBar({
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
               </svg>
-              Run Backtest
+              {t.runBacktest}
             </>
           )}
         </button>

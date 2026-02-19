@@ -1,4 +1,5 @@
 import type { BatchBacktestResult } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface StrategyResultSet {
   strategyName: string;
@@ -11,13 +12,24 @@ interface BacktestResultsGridProps {
   allResults: StrategyResultSet[];
   selectedResult: { symbol: string; strategyName: string } | null;
   onSelectResult: (result: { symbol: string; strategyName: string }) => void;
+  t: Translation;
 }
 
 function fmtPct(v: number): string {
   return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 
-export default function BacktestResultsGrid({ allResults, selectedResult, onSelectResult }: BacktestResultsGridProps) {
+function fmtDateRange(start?: string, end?: string): string {
+  if (!start || !end) return "";
+  const fmt = (d: string) => {
+    const [, m, day] = d.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[parseInt(m) - 1]} ${parseInt(day)}`;
+  };
+  return `${fmt(start)} → ${fmt(end)}`;
+}
+
+export default function BacktestResultsGrid({ allResults, selectedResult, onSelectResult, t }: BacktestResultsGridProps) {
   const isMulti = allResults.length > 1;
 
   if (!isMulti) {
@@ -28,12 +40,12 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
             <tr className="border-b border-tv-border">
-              <th className="px-4 py-2 w-24 border-r border-tv-border/30">Symbol</th>
-              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Return %</th>
-              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Win Rate</th>
-              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Profit Factor</th>
-              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Max DD</th>
-              <th className="px-4 py-2 w-20 text-right">Trades</th>
+              <th className="px-4 py-2 w-24 border-r border-tv-border/30">{t.symbols}</th>
+              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.returnPercent}</th>
+              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.winRate}</th>
+              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.profitFactor}</th>
+              <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.maxDrawdown}</th>
+              <th className="px-4 py-2 w-20 text-right">{t.trades}</th>
             </tr>
           </thead>
           <tbody className="text-tv-text divide-y divide-tv-border font-medium">
@@ -46,10 +58,20 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
                   className={`hover:bg-tv-panel transition cursor-pointer ${isSelected ? "bg-tv-panel border-l-2 border-l-tv-blue" : ""}`}
                 >
                   <td className="px-4 py-2.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      <span className={`font-bold ${isSelected ? "text-tv-blue" : "text-tv-text"}`}>{r.symbol}</span>
-                    </span>
+                    <div className="flex items-start gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: color }} />
+                      <div>
+                        <div className={`font-bold leading-none ${isSelected ? "text-tv-blue" : "text-tv-text"}`}>{r.symbol}</div>
+                        {(r.data_start || r.data_end) && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] text-tv-muted font-normal">{fmtDateRange(r.data_start, r.data_end)}</span>
+                            {r.from_cache && (
+                              <span className="text-[9px] bg-tv-panel border border-tv-border/50 text-tv-muted rounded px-1">{t.cached}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className={`px-4 py-2.5 text-right font-mono ${r.total_return_pct >= 0 ? "text-tv-green" : "text-tv-red"}`}>
                     {fmtPct(r.total_return_pct)}
@@ -103,7 +125,7 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
       <table className="w-full text-left border-collapse text-xs">
         <thead className="sticky top-0 bg-tv-base z-10 text-tv-muted uppercase font-medium">
           <tr className="border-b border-tv-border">
-            <th className="px-4 py-2 border-r border-tv-border/30">Symbol</th>
+            <th className="px-4 py-2 border-r border-tv-border/30">{t.symbol}</th>
             {allResults.map((run) => (
               <th
                 key={run.strategyName}
@@ -117,14 +139,14 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
                 </span>
               </th>
             ))}
-            <th className="px-4 py-2 text-center">Winner</th>
+            <th className="px-4 py-2 text-center">{t.winner}</th>
           </tr>
           <tr className="border-b border-tv-border/60 bg-tv-base">
             <th className="px-4 py-1.5" />
             {allResults.flatMap((run) => [
-              <th key={run.strategyName + "-ret"} className="px-3 py-1.5 text-right text-[10px]">Return</th>,
-              <th key={run.strategyName + "-wr"} className="px-3 py-1.5 text-right text-[10px]">Win%</th>,
-              <th key={run.strategyName + "-tr"} className="px-3 py-1.5 text-right text-[10px] border-r border-tv-border/30">Trades</th>,
+              <th key={run.strategyName + "-ret"} className="px-3 py-1.5 text-right text-[10px]">{t.return}</th>,
+              <th key={run.strategyName + "-wr"} className="px-3 py-1.5 text-right text-[10px]">{t.winPercent}</th>,
+              <th key={run.strategyName + "-tr"} className="px-3 py-1.5 text-right text-[10px] border-r border-tv-border/30">{t.trades}</th>,
             ])}
             <th className="px-4 py-1.5" />
           </tr>
@@ -152,7 +174,18 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
                 className={`hover:bg-tv-panel/50 transition ${isRowSelected ? "bg-tv-panel/30" : ""}`}
               >
                 <td className="px-4 py-2.5 border-r border-tv-border/20">
-                  <span className="font-bold text-tv-text">{symbol}</span>
+                  <div className="font-bold text-tv-text leading-none">{symbol}</div>
+                  {(() => {
+                    const first = allResults[0].results.find((r) => r.symbol === symbol);
+                    return first?.data_start ? (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-[10px] text-tv-muted">{fmtDateRange(first.data_start, first.data_end)}</span>
+                        {first.from_cache && (
+                          <span className="text-[9px] bg-tv-panel border border-tv-border/50 text-tv-muted rounded px-1">{t.cached}</span>
+                        )}
+                      </div>
+                    ) : null;
+                  })()}
                 </td>
 
                 {allResults.map((run) => {
@@ -162,7 +195,7 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
 
                   if (!res) {
                     return (
-                      <td key={run.strategyName + "-empty"} colSpan={3} className="px-3 py-2.5 text-tv-muted text-center text-[10px] border-r border-tv-border/20">--</td>
+                      <td key={run.strategyName + "-empty"} colSpan={3} className="px-3 py-2.5 text-tv-muted text-center text-[10px] border-r border-tv-border/20">{t.noData}</td>
                     );
                   }
 

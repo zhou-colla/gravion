@@ -74,10 +74,20 @@ export interface StockDetail {
   fundamentals: Fundamentals;
 }
 
+export interface ParamMeta {
+  label: string;
+  type: "int" | "float";
+  default: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
 export interface StrategyInfo {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  param_meta?: Record<string, ParamMeta>;
   builtin: boolean;
 }
 
@@ -141,6 +151,9 @@ export interface BatchBacktestResult {
   trade_count: number;
   trades: TradeEntry[];
   equity_curve: EquityCurvePoint[];
+  data_start?: string;
+  data_end?: string;
+  from_cache?: boolean;
 }
 
 export interface BatchBacktestResponse {
@@ -157,7 +170,7 @@ export interface EquityCurvePoint {
 }
 
 export interface AppSettings {
-  data_source: "yahoo_finance" | "moomoo_opend";
+  data_source: "yahoo_finance" | "moomoo_opend" | "tushare";
   global_start_date: string;
   global_end_date: string;
 }
@@ -196,6 +209,54 @@ export interface OptimizeResponse {
   combinations_tested: number;
   results: OptimizeResult[];
   error?: string;
+}
+
+export interface FinancialStatement {
+  end_date: string;
+  end_date_iso: string;
+  period_label: string;
+  total_revenue: number | null;
+  revenue: number | null;
+  total_profit: number | null;
+  n_income: number | null;
+  n_income_attr_p: number | null;
+  operate_profit: number | null;
+  basic_eps: number | null;
+  diluted_eps: number | null;
+  income_tax: number | null;
+}
+
+export interface FinancialSummary {
+  latest_eps: number | null;
+  latest_revenue: number | null;
+  latest_profit: number | null;
+  revenue_growth_pct: number | null;
+  profit_growth_pct: number | null;
+  avg_profit_margin_pct: number | null;
+  periods_available: number;
+}
+
+export interface YFinanceFundamentals {
+  short_name: string | null;
+  sector: string | null;
+  pe_ratio: number | null;
+  market_cap: number | null;
+  total_revenue: number | null;
+  revenue_growth: number | null;
+  gross_margins: number | null;
+  operating_margins: number | null;
+}
+
+export interface FinancialsResponse {
+  success: boolean;
+  symbol: string;
+  is_cn_stock: boolean;
+  from_cache?: boolean;
+  statements: FinancialStatement[];
+  summary?: FinancialSummary;
+  yfinance_fundamentals?: YFinanceFundamentals;
+  error?: string;
+  code?: string;
 }
 
 export interface FilterCondition {

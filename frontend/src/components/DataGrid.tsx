@@ -1,4 +1,5 @@
 import type { StockRow } from "../types/stock";
+import type { Translation } from "../i18n";
 
 function formatDataTime(lastFetched: string): { text: string; isRealtime: boolean } {
   try {
@@ -47,28 +48,29 @@ interface DataGridProps {
   selectedSymbol: string | null;
   onSelectStock: (symbol: string) => void;
   comparisonStrategies?: string[];
+  t: Translation;
 }
 
-export default function DataGrid({ stocks, selectedSymbol, onSelectStock, comparisonStrategies = [] }: DataGridProps) {
+export default function DataGrid({ stocks, selectedSymbol, onSelectStock, comparisonStrategies = [], t }: DataGridProps) {
   const hasComparison = comparisonStrategies.length > 0;
 
   return (
     <table className="w-full text-left border-collapse">
       <thead className="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
         <tr className="border-b border-tv-border">
-          <th className="px-4 py-2 w-32 border-r border-tv-border/30">Ticker</th>
-          <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Price</th>
-          <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">Chg %</th>
-          <th className="px-4 py-2 w-32 text-right border-r border-tv-border/30 text-tv-blue">Data Time</th>
+          <th className="px-4 py-2 w-32 border-r border-tv-border/30">{t.ticker}</th>
+          <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.price}</th>
+          <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.changePercent}</th>
+          <th className="px-4 py-2 w-32 text-right border-r border-tv-border/30 text-tv-blue">{t.dataTime}</th>
           <th className="px-4 py-2 border-r border-tv-border/30">
-            {hasComparison ? "Primary Signal" : "Signal Status"}
+            {hasComparison ? t.primarySignal : t.signalStatus}
           </th>
           {comparisonStrategies.map((s) => (
             <th key={s} className="px-4 py-2 border-r border-tv-border/30 text-tv-blue/80 whitespace-nowrap">
               {s}
             </th>
           ))}
-          <th className="px-4 py-2 text-right">YoY Growth</th>
+          <th className="px-4 py-2 text-right">{t.yoyGrowth}</th>
         </tr>
       </thead>
       <tbody className="text-tv-text divide-y divide-tv-border font-medium">

@@ -23,6 +23,13 @@ class GoldenCrossStrategy(BaseStrategy):
     def parameters(self) -> dict[str, Any]:
         return {"fast_period": self._fast_period, "slow_period": self._slow_period}
 
+    @property
+    def param_meta(self) -> dict[str, dict]:
+        return {
+            "fast_period": {"label": "Fast MA Period", "type": "int", "default": 50, "min": 5, "max": 200, "step": 5},
+            "slow_period": {"label": "Slow MA Period", "type": "int", "default": 100, "min": 10, "max": 400, "step": 10},
+        }
+
     def compute_intensity(self, df: pd.DataFrame) -> str:
         fast = sma(df["close"], self._fast_period).dropna()
         slow = sma(df["close"], self._slow_period).dropna()

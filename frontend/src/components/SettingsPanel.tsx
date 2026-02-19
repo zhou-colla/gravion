@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { AppSettings } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface SettingsPanelProps {
-  settings: AppSettings;
-  onSettingsChanged: (settings: AppSettings) => void;
+  settings: AppSettings & { tushare_api_key?: string };
+  onSettingsChanged: (settings: AppSettings & { tushare_api_key?: string }) => void;
+  t: Translation;
 }
 
-export default function SettingsPanel({ settings, onSettingsChanged }: SettingsPanelProps) {
-  const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+export default function SettingsPanel({ settings, onSettingsChanged, t }: SettingsPanelProps) {
+  const [localSettings, setLocalSettings] = useState<AppSettings & { tushare_api_key?: string }>(settings);
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -15,7 +17,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
     setLocalSettings(settings);
   }, [settings]);
 
-  const saveSettings = useCallback(async (updated: Partial<AppSettings>) => {
+  const saveSettings = useCallback(async (updated: Partial<AppSettings & { tushare_api_key?: string }>) => {
     setSaving(true);
     try {
       const res = await fetch("http://localhost:8000/api/settings", {
@@ -25,10 +27,11 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
       });
       const json = await res.json();
       if (json.success) {
-        const newSettings: AppSettings = {
+        const newSettings: AppSettings & { tushare_api_key?: string } = {
           data_source: json.data_source,
           global_start_date: json.global_start_date,
           global_end_date: json.global_end_date,
+          tushare_api_key: json.tushare_api_key ?? localSettings.tushare_api_key,
         };
         setLocalSettings(newSettings);
         onSettingsChanged(newSettings);
@@ -38,7 +41,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
     } finally {
       setSaving(false);
     }
-  }, [onSettingsChanged]);
+  }, [onSettingsChanged, localSettings.tushare_api_key]);
 
   const debouncedSave = useCallback((patch: Partial<AppSettings>) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -74,13 +77,13 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
   return (
     <div className="flex-1 flex flex-col bg-tv-base min-w-0 overflow-auto">
       <div className="max-w-2xl mx-auto w-full px-6 py-8">
-        <h2 className="text-xl font-bold text-tv-text mb-6">Settings</h2>
+        <h2 className="text-xl font-bold text-tv-text mb-6">{t.settings}</h2>
 
         {/* Data Source */}
         <div className="bg-tv-panel border border-tv-border rounded-lg p-5 mb-4">
-          <h3 className="text-sm font-semibold text-tv-text mb-3">Data Source</h3>
+          <h3 className="text-sm font-semibold text-tv-text mb-3">{t.dataSource}</h3>
           <p className="text-xs text-tv-muted mb-3">
-            Choose where stock market data is fetched from.
+            {t.chooseDataSource}
           </p>
           <select
             value={localSettings.data_source}
@@ -88,8 +91,9 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
             disabled={saving}
             className="bg-tv-base text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue cursor-pointer w-full"
           >
-            <option value="yahoo_finance">Yahoo Finance (Free)</option>
-            <option value="moomoo_opend">Moomoo OpenD (Real-time)</option>
+            <option value="yahoo_finance">{t.yahooFinance}</option>
+            <option value="moomoo_opend">{t.moomooOpenD}</option>
+            <option value="tushare">{t.tushare}</option>
           </select>
 
           {localSettings.data_source === "moomoo_opend" && (
@@ -99,22 +103,56 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
                 <span className="text-amber-400 text-xs font-medium">
-                  Moomoo OpenD gateway is not configured. Data fetching will fail until the gateway is installed and connected.
+                  {t.moomooNotConfigured}
                 </span>
               </div>
+            </div>
+          )}
+
+          {localSettings.data_source === "tushare" && (
+            <div className="mt-3 bg-blue-900/20 border border-blue-600/30 rounded px-3 py-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <span className="text-blue-400 text-xs font-medium">
+                  {t.tushareApiKeyRequired}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Tushare API Key */}
+          {localSettings.data_source === "tushare" && (
+            <div className="mt-4">
+              <label className="text-xs text-tv-muted block mb-1">{t.tushareApiKey}</label>
+              <input
+                type="text"
+                value={localSettings.tushare_api_key || ""}
+                onChange={(e) => {
+                  setLocalSettings((prev) => ({ ...prev, tushare_api_key: e.target.value }));
+                  saveSettings({ tushare_api_key: e.target.value });
+                }}
+                disabled={saving}
+                placeholder={t.enterTushareApiKey}
+                className="bg-tv-base text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue w-full"
+              />
+              <p className="text-xs text-tv-muted mt-1">
+                {t.getTushareApiKey} <a href="https://tushare.pro/" target="_blank" rel="noopener noreferrer" className="text-tv-blue hover:underline">Tushare.pro</a>
+              </p>
             </div>
           )}
         </div>
 
         {/* Global Data Timeline */}
         <div className="bg-tv-panel border border-tv-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-tv-text mb-3">Global Data Timeline</h3>
+          <h3 className="text-sm font-semibold text-tv-text mb-3">{t.globalDataTimeline}</h3>
           <p className="text-xs text-tv-muted mb-3">
-            Set a default date range for data fetching. Leave empty to use each tool's default period.
+            {t.setDateRange}
           </p>
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-xs text-tv-muted block mb-1">Start Date</label>
+              <label className="text-xs text-tv-muted block mb-1">{t.startDate}</label>
               <input
                 type="date"
                 value={localSettings.global_start_date}
@@ -125,7 +163,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
               />
             </div>
             <div className="flex-1">
-              <label className="text-xs text-tv-muted block mb-1">End Date</label>
+              <label className="text-xs text-tv-muted block mb-1">{t.endDate}</label>
               <input
                 type="date"
                 value={localSettings.global_end_date}
@@ -141,7 +179,7 @@ export default function SettingsPanel({ settings, onSettingsChanged }: SettingsP
                 disabled={saving || (!localSettings.global_start_date && !localSettings.global_end_date)}
                 className="text-xs text-tv-muted hover:text-tv-text disabled:opacity-30 border border-tv-border rounded px-3 py-2 mt-4 transition cursor-pointer"
               >
-                Clear
+                {t.clear}
               </button>
             </div>
           </div>

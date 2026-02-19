@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { StrategyInfo, OptimizeResponse, OptimizeResult, ParamMeta } from "../types/stock";
+import type { Translation } from "../i18n";
 
 interface SweepRow {
   param: string;
@@ -16,6 +17,7 @@ interface OptimizerPanelProps {
   strategies: StrategyInfo[];
   availableSymbols: string[];
   realtime: boolean;
+  t: Translation;
 }
 
 function rangeToValues(min: number, max: number, step: number): number[] {
@@ -56,7 +58,7 @@ function formatPct(v: number | undefined): string {
   return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 
-export default function OptimizerPanel({ strategies, availableSymbols, realtime }: OptimizerPanelProps) {
+export default function OptimizerPanel({ strategies, availableSymbols, realtime, t }: OptimizerPanelProps) {
   const [selectedStrategy, setSelectedStrategy] = useState("");
   const [symbol, setSymbol] = useState("");
   const [period, setPeriod] = useState("1y");
@@ -182,13 +184,13 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
       <div className="border-b border-tv-border bg-tv-panel px-4 py-3 flex flex-wrap items-start gap-4">
         {/* Strategy */}
         <div className="flex flex-col space-y-1">
-          <label className="text-[10px] text-tv-muted uppercase font-medium">Strategy</label>
+          <label className="text-[10px] text-tv-muted uppercase font-medium">{t.strategy}</label>
           <select
             value={selectedStrategy}
             onChange={(e) => handleStrategyChange(e.target.value)}
             className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer min-w-[160px]"
           >
-            <option value="">Select strategy…</option>
+            <option value="">{t.selectStrategy}</option>
             {strategies.filter((s) => s.builtin).map((s) => (
               <option key={s.name} value={s.name}>{s.name}</option>
             ))}
@@ -197,12 +199,12 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
 
         {/* Symbol */}
         <div className="flex flex-col space-y-1">
-          <label className="text-[10px] text-tv-muted uppercase font-medium">Symbol</label>
+          <label className="text-[10px] text-tv-muted uppercase font-medium">{t.symbol}</label>
           <input
             type="text"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            placeholder="e.g. AAPL"
+            placeholder={t.symbolExample}
             list="opt-symbols"
             className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-28"
           />
@@ -213,19 +215,19 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
 
         {/* Timeframe */}
         <div className="flex flex-col space-y-1">
-          <label className="text-[10px] text-tv-muted uppercase font-medium">Timeframe</label>
+          <label className="text-[10px] text-tv-muted uppercase font-medium">{t.timeframe}</label>
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setUsePeriod(true)}
               className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${usePeriod ? "bg-tv-blue/10 border-tv-blue text-tv-blue" : "border-tv-border text-tv-muted hover:border-tv-text"}`}
             >
-              Period
+              {t.period}
             </button>
             <button
               onClick={() => setUsePeriod(false)}
               className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${!usePeriod ? "bg-tv-blue/10 border-tv-blue text-tv-blue" : "border-tv-border text-tv-muted hover:border-tv-text"}`}
             >
-              Date Range
+              {t.dateRange}
             </button>
           </div>
           {usePeriod ? (
@@ -249,7 +251,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
         <div className="flex flex-col space-y-1 flex-1 min-w-[340px]">
           <div className="flex items-center justify-between">
             <label className="text-[10px] text-tv-muted uppercase font-medium">
-              Parameter Sweeps
+              {t.parameterSweeps}
               {totalCombinations > 1 && (
                 <span className="ml-2 normal-case text-tv-blue">
                   ({totalCombinations} combination{totalCombinations !== 1 ? "s" : ""})
@@ -260,7 +262,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
               onClick={addSweep}
               className="text-[10px] text-tv-blue hover:underline cursor-pointer"
             >
-              + Add Param
+              {t.addParam}
             </button>
           </div>
           <div className="space-y-1.5">
@@ -279,7 +281,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                       }}
                       className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue cursor-pointer w-36"
                     >
-                      <option value="">Select param…</option>
+                      <option value="">{t.selectParam}</option>
                       {Object.entries(selectedStrategyInfo.param_meta).map(([p, m]) => (
                         <option key={p} value={p}>{m.label}</option>
                       ))}
@@ -289,7 +291,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                       type="text"
                       value={row.param}
                       onChange={(e) => updateSweep(i, { param: e.target.value })}
-                      placeholder="param name"
+                      placeholder={t.paramName}
                       className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-28"
                     />
                   )}
@@ -300,13 +302,13 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                       onClick={() => updateSweep(i, { mode: "range" })}
                       className={`px-2 py-0.5 text-[10px] transition cursor-pointer ${row.mode === "range" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"}`}
                     >
-                      Range
+                      {t.range}
                     </button>
                     <button
                       onClick={() => updateSweep(i, { mode: "values" })}
                       className={`px-2 py-0.5 text-[10px] transition cursor-pointer ${row.mode === "values" ? "bg-tv-blue text-white" : "text-tv-muted hover:text-tv-text"}`}
                     >
-                      Values
+                      {t.values}
                     </button>
                   </div>
 
@@ -317,23 +319,23 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                         type="number"
                         value={row.min}
                         onChange={(e) => updateSweep(i, { min: e.target.value })}
-                        placeholder="min"
+                        placeholder={t.min}
                         className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-16"
                       />
-                      <span className="text-tv-muted text-[10px]">to</span>
+                      <span className="text-tv-muted text-[10px]">{t.to}</span>
                       <input
                         type="number"
                         value={row.max}
                         onChange={(e) => updateSweep(i, { max: e.target.value })}
-                        placeholder="max"
+                        placeholder={t.max}
                         className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-16"
                       />
-                      <span className="text-tv-muted text-[10px]">step</span>
+                      <span className="text-tv-muted text-[10px]">{t.step}</span>
                       <input
                         type="number"
                         value={row.step}
                         onChange={(e) => updateSweep(i, { step: e.target.value })}
-                        placeholder="step"
+                        placeholder={t.step}
                         className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-14"
                       />
                       {/* Live count for this row */}
@@ -348,7 +350,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                       type="text"
                       value={row.values}
                       onChange={(e) => updateSweep(i, { values: e.target.value })}
-                      placeholder={meta ? `e.g. ${meta.default}, ${meta.default + meta.step}` : "10, 20, 50"}
+                      placeholder={meta ? `e.g. ${meta.default}, ${meta.default + meta.step}` : t.valuesExampleDefault}
                       className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue flex-1 min-w-[120px]"
                     />
                   )}
@@ -381,14 +383,14 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                 <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Running…</span>
+                <span>{t.running}</span>
               </>
             ) : (
               <>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
                 </svg>
-                <span>Optimize</span>
+                <span>{t.optimize}</span>
               </>
             )}
           </button>
@@ -407,7 +409,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="inline-block w-8 h-8 border-2 border-tv-blue border-t-transparent rounded-full animate-spin mb-3" />
-              <p className="text-tv-muted text-xs">Testing {totalCombinations} parameter combination{totalCombinations !== 1 ? "s" : ""}…</p>
+              <p className="text-tv-muted text-xs">{t.testingCombinations.replace('{count}', totalCombinations.toString()).replace('{plural}', totalCombinations !== 1 ? 's' : '')}</p>
             </div>
           </div>
         )}
@@ -420,12 +422,12 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
               </div>
-              <h3 className="text-base font-medium mb-2 text-tv-text">Parameter Optimizer</h3>
+              <h3 className="text-base font-medium mb-2 text-tv-text">{t.parameterOptimizer}</h3>
               <p className="text-tv-muted text-xs mb-1">
-                Select a strategy to auto-populate its parameters, then enter a symbol and click Optimize.
+                {t.optimizerInstructions}
               </p>
               <p className="text-tv-muted text-xs">
-                Use Range mode for sweep ranges or Values mode for specific values.
+                {t.optimizerModeInstructions}
               </p>
             </div>
           </div>
@@ -445,7 +447,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
             <table className="w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 bg-tv-base z-10 text-tv-muted uppercase font-medium">
                 <tr className="border-b border-tv-border">
-                  <th className="px-3 py-2 border-r border-tv-border/30">#</th>
+                  <th className="px-3 py-2 border-r border-tv-border/30">{t.rank}</th>
                   {/* Dynamic param columns */}
                   {sweeps.filter((s) => s.param.trim()).map((s) => {
                     const meta = selectedStrategyInfo?.param_meta?.[s.param];
@@ -459,31 +461,31 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("total_return_pct")}
                   >
-                    Return <SortIcon col="total_return_pct" />
+                    {t.return} <SortIcon col="total_return_pct" />
                   </th>
                   <th
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("win_rate_pct")}
                   >
-                    Win Rate <SortIcon col="win_rate_pct" />
+                    {t.winRate} <SortIcon col="win_rate_pct" />
                   </th>
                   <th
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("profit_factor")}
                   >
-                    Profit Factor <SortIcon col="profit_factor" />
+                    {t.profitFactor} <SortIcon col="profit_factor" />
                   </th>
                   <th
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("max_drawdown_pct")}
                   >
-                    Max DD <SortIcon col="max_drawdown_pct" />
+                    {t.maxDrawdown} <SortIcon col="max_drawdown_pct" />
                   </th>
                   <th
                     className="px-3 py-2 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("trade_count")}
                   >
-                    Trades <SortIcon col="trade_count" />
+                    {t.trades} <SortIcon col="trade_count" />
                   </th>
                 </tr>
               </thead>
@@ -497,7 +499,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime 
                     >
                       <td className="px-3 py-2 text-tv-muted">
                         {isBest ? (
-                          <span className="text-tv-green font-bold">★</span>
+                          <span className="text-tv-green font-bold">{t.bestResult}</span>
                         ) : (
                           i + 1
                         )}

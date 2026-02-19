@@ -15,15 +15,16 @@ export const zh = {
   
   // Scanner
   results: "结果",
-  addFilter: "添加筛选条件",
+  addFilter: "+ 添加过滤器",
   buildCustomFilter: "构建自定义过滤器",
   toggleOperator: "切换 AND/OR",
-  clearAllFilters: "清除所有筛选条件",
+  clearAllFilters: "清除所有过滤器",
   export: "导出",
   source: "数据源",
   noScanResults: "无扫描结果",
   enableRealtimeFetch: "启用实时获取并点击获取并运行以下载新数据。",
-  screenCachedData: "或点击选股以筛选缓存数据。",
+  screenCachedData: "或点击运行扫描器以筛选缓存数据。",
+  signalStrategies: "选股策略",
   
   // Loading states
   fetchingData: "正在获取数据...",

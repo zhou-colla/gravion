@@ -131,7 +131,7 @@ export default function VisualBuilder({ onSave, onClose, t }: VisualBuilderProps
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={`${t.filterDescription} (optional)`}
+              placeholder={`${t.strategyDescription}`}
               className="w-full bg-tv-panel text-tv-text text-sm border border-tv-border rounded px-3 py-2 outline-none focus:border-tv-blue"
             />
           </div>
@@ -139,7 +139,7 @@ export default function VisualBuilder({ onSave, onClose, t }: VisualBuilderProps
           {/* BUY conditions */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-tv-green uppercase tracking-wider">BUY WHEN</h3>
+              <h3 className="text-xs font-bold text-tv-green uppercase tracking-wider">{t.buyWhen}</h3>
               <button
                 onClick={() => setBuyConditions([...buyConditions, emptyCondition()])}
                 className="text-[10px] text-tv-blue hover:text-blue-400 transition cursor-pointer"
@@ -164,7 +164,7 @@ export default function VisualBuilder({ onSave, onClose, t }: VisualBuilderProps
           {/* SELL conditions */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-tv-red uppercase tracking-wider">SELL WHEN</h3>
+              <h3 className="text-xs font-bold text-tv-red uppercase tracking-wider">{t.sellWhen}</h3>
               <button
                 onClick={() => setSellConditions([...sellConditions, emptyCondition()])}
                 className="text-[10px] text-tv-blue hover:text-blue-400 transition cursor-pointer"

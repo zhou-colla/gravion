@@ -108,6 +108,14 @@ export const en = {
   equityCurve: "Equity Curve",
   summary: "Summary",
   errors: "Errors",
+  addMore: "Add more...",
+  addTickersExample: "e.g. AAPL, MSFT",
+  addStrategy: "Add Strategy",
+  selectPortfolio: "Select Portfolio",
+  period6mo: "6 Months",
+  period1y: "1 Year",
+  period2y: "2 Years",
+  period5y: "5 Years",
   
   // Status bar
   backendOnline: "Backend Online",
@@ -119,13 +127,17 @@ export const en = {
   // Visual Builder
   visualStrategyBuilder: "Visual Strategy Builder",
   saveStrategy: "Save Strategy",
+  buyWhen: "Buy When",
+  sellWhen: "Sell When",
+  strategyDescription: "Strategy Description (optional)",
   
   // Filter Builder
   filterBuilder: "Filter Builder",
   filterName: "Filter Name",
-  filterDescription: "Filter Description",
+  filterDescription: "Filter Description (optional)",
   addCondition: "Add Condition",
   saveFilter: "Save Filter",
+
   
   // Language toggle
   language: "Language",

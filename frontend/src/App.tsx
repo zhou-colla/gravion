@@ -640,6 +640,7 @@ export default function App() {
                     highlightedTrade={highlightedTrade}
                     isLoading={detailLoading}
                     loadingSymbol={selectedSymbol ?? undefined}
+                    t={t}
                   />
                 )}
 
@@ -757,22 +758,26 @@ export default function App() {
             onStrategiesChanged={loadStrategies}
             portfolios={portfolios}
             realtime={realtimeFetch}
+            t={t}
           />
         ) : activeView === "portfolios" ? (
           <PortfolioManager
             portfolios={portfolios}
             onPortfoliosChanged={loadPortfolios}
+            t={t}
           />
         ) : activeView === "analysis" ? (
           <AnalysisPanel
             portfolios={portfolios}
             settings={settings}
             realtimeFetch={realtimeFetch}
+            t={t}
           />
         ) : activeView === "settings" ? (
           <SettingsPanel
             settings={settings}
             onSettingsChanged={setSettings}
+            t={t}
           />
         ) : null}
       </div>
@@ -782,6 +787,7 @@ export default function App() {
         <VisualBuilder
           onSave={saveVisualStrategy}
           onClose={() => setShowVisualBuilder(false)}
+          t={t}
         />
       )}
 

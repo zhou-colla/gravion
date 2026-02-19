@@ -713,6 +713,7 @@ export default function App() {
                       selectedSymbol={selectedSymbol}
                       onSelectStock={loadStockDetail}
                       comparisonStrategies={comparisonStrategies}
+                      t={t}
                     />
                   )}
                 </div>

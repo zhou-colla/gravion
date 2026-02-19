@@ -24,6 +24,7 @@ export const en = {
   noScanResults: "No Scan Results",
   enableRealtimeFetch: "Enable Realtime Fetch and click Fetch & Run to download fresh data.",
   screenCachedData: "Or click Run Scanner to screen cached data.",
+  signalStrategies: "Signal Strategies",
   
   // Loading states
   fetchingData: "Fetching data...",

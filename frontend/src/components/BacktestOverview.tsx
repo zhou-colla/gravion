@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { createChart, ColorType, LineSeries } from "lightweight-charts";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { BatchBacktestSummary, EquityCurvePoint } from "../types/stock";
+import type { Translation } from "../i18n";
 
 export interface StrategyOverviewData {
   strategyName: string;
@@ -12,6 +13,7 @@ export interface StrategyOverviewData {
 
 interface BacktestOverviewProps {
   strategies: StrategyOverviewData[];
+  t: Translation;
 }
 
 function MetricCard({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
@@ -28,7 +30,7 @@ function fmtMoney(v: number): string {
   return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function BacktestOverview({ strategies }: BacktestOverviewProps) {
+export default function BacktestOverview({ strategies, t }: BacktestOverviewProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -216,7 +218,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="border-b border-tv-border">
-                  <th className="text-left text-[10px] text-tv-muted uppercase pb-1.5 pr-3">Metric</th>
+                  <th className="text-left text-[10px] text-tv-muted uppercase pb-1.5 pr-3">{t.metric}</th>
                   {strategies.map((s) => (
                     <th key={s.strategyName} className="text-right text-[10px] pb-1.5 px-2 whitespace-nowrap" style={{ color: s.color }}>
                       <span className="inline-flex items-center gap-1">
@@ -229,7 +231,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
               </thead>
               <tbody className="divide-y divide-tv-border/40">
                 <tr>
-                  <td className="py-1.5 pr-3 text-tv-muted">Portfolio Return</td>
+                  <td className="py-1.5 pr-3 text-tv-muted">{t.portfolioReturn}</td>
                   {strategies.map((s) => (
                     <td key={s.strategyName} className={`py-1.5 px-2 text-right font-mono font-semibold ${s.summary.portfolio_return_pct >= 0 ? "text-tv-green" : "text-tv-red"}`}>
                       {s.summary.portfolio_return_pct >= 0 ? "+" : ""}{s.summary.portfolio_return_pct.toFixed(2)}%
@@ -237,7 +239,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
                   ))}
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3 text-tv-muted">Avg Win Rate</td>
+                  <td className="py-1.5 pr-3 text-tv-muted">{t.avgWinRate}</td>
                   {strategies.map((s) => (
                     <td key={s.strategyName} className={`py-1.5 px-2 text-right font-mono ${s.summary.avg_win_rate_pct >= 50 ? "text-tv-green" : "text-tv-red"}`}>
                       {s.summary.avg_win_rate_pct.toFixed(1)}%
@@ -245,7 +247,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
                   ))}
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3 text-tv-muted">Total Trades</td>
+                  <td className="py-1.5 pr-3 text-tv-muted">{t.totalTrades}</td>
                   {strategies.map((s) => (
                     <td key={s.strategyName} className="py-1.5 px-2 text-right font-mono text-tv-text">
                       {s.summary.total_trades}
@@ -253,7 +255,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
                   ))}
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3 text-tv-muted">Best Ticker</td>
+                  <td className="py-1.5 pr-3 text-tv-muted">{t.bestTicker}</td>
                   {strategies.map((s) => (
                     <td key={s.strategyName} className="py-1.5 px-2 text-right font-mono text-tv-green">
                       {s.summary.best_ticker || "--"}
@@ -261,7 +263,7 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
                   ))}
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3 text-tv-muted">Worst Ticker</td>
+                  <td className="py-1.5 pr-3 text-tv-muted">{t.worstTicker}</td>
                   {strategies.map((s) => (
                     <td key={s.strategyName} className="py-1.5 px-2 text-right font-mono text-tv-red">
                       {s.summary.worst_ticker || "--"}
@@ -271,22 +273,22 @@ export default function BacktestOverview({ strategies }: BacktestOverviewProps) 
               </tbody>
             </table>
           </div>
-          {chartBlock("Equity Curves")}
+          {chartBlock(t.equityCurves)}
         </div>
       ) : (
         /* ── Single-strategy layout ── */
         <div className="flex gap-4">
           <div className="grid grid-cols-2 gap-2 w-64 shrink-0">
             <MetricCard
-              label="Portfolio Return"
+              label={t.portfolioReturn}
               value={`${strategies[0].summary.portfolio_return_pct >= 0 ? "+" : ""}${strategies[0].summary.portfolio_return_pct.toFixed(2)}%`}
               color={strategies[0].summary.portfolio_return_pct >= 0 ? "text-tv-green" : "text-tv-red"}
             />
-            <MetricCard label="Total Trades" value={`${strategies[0].summary.total_trades}`} />
-            <MetricCard label="Best Ticker" value={strategies[0].summary.best_ticker || "--"} color="text-tv-green" />
-            <MetricCard label="Worst Ticker" value={strategies[0].summary.worst_ticker || "--"} color="text-tv-red" />
+            <MetricCard label={t.totalTrades} value={`${strategies[0].summary.total_trades}`} />
+            <MetricCard label={t.bestTicker} value={strategies[0].summary.best_ticker || "--"} color="text-tv-green" />
+            <MetricCard label={t.worstTicker} value={strategies[0].summary.worst_ticker || "--"} color="text-tv-red" />
           </div>
-          {chartBlock("Portfolio Equity Curve")}
+          {chartBlock(t.portfolioEquityCurve)}
         </div>
       )}
     </div>

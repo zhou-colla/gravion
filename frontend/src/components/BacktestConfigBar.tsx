@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { StrategyInfo, Portfolio } from "../types/stock";
+import type { Translation } from "../i18n";
 
 export const STRATEGY_COLORS = ["#2962FF", "#26A69A", "#EF5350", "#FF9800", "#AB47BC"];
 
@@ -27,6 +28,7 @@ interface BacktestConfigBarProps {
   onSourceModeChange: (mode: "manual" | "portfolio") => void;
   selectedPortfolioId: number | null;
   onPortfolioChange: (id: number | null) => void;
+  t: Translation;
 }
 
 export default function BacktestConfigBar({
@@ -53,6 +55,7 @@ export default function BacktestConfigBar({
   onSourceModeChange,
   selectedPortfolioId,
   onPortfolioChange,
+  t,
 }: BacktestConfigBarProps) {
   const [symbolInput, setSymbolInput] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);

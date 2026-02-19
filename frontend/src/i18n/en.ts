@@ -26,6 +26,15 @@ export const en = {
   screenCachedData: "Or click Run Scanner to screen cached data.",
   signalStrategies: "Signal Strategies",
   
+  // DataGrid
+  ticker: "Ticker",
+  price: "Price",
+  changePercent: "Chg %",
+  dataTime: "Data Time",
+  primarySignal: "Primary Signal",
+  signalStatus: "Signal Status",
+  yoyGrowth: "YoY Growth",
+  
   // Loading states
   fetchingData: "Fetching data...",
   screeningData: "Screening cached data...",
@@ -53,7 +62,6 @@ export const en = {
   transactionLog: "Transaction Log",
   date: "Date",
   type: "Type",
-  price: "Price",
   shares: "Shares",
   pnl: "PnL",
   

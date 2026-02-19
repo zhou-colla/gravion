@@ -40,7 +40,7 @@ export default function BacktestResultsGrid({ allResults, selectedResult, onSele
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 bg-tv-base z-10 text-xs text-tv-muted uppercase font-medium">
             <tr className="border-b border-tv-border">
-              <th className="px-4 py-2 w-24 border-r border-tv-border/30">{t.symbol}</th>
+              <th className="px-4 py-2 w-24 border-r border-tv-border/30">{t.symbols}</th>
               <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.returnPercent}</th>
               <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.winRate}</th>
               <th className="px-4 py-2 w-24 text-right border-r border-tv-border/30">{t.profitFactor}</th>

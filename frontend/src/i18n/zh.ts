@@ -107,12 +107,20 @@ export const zh = {
   initialCapital: "每只股票初始资金",
   sourceMode: "来源模式",
   manual: "手动",
-  portfolio: "投资组合",
+  portfolio: "测试投资组合",
   delete: "删除",
   createStrategy: "创建策略",
   equityCurve: "资金曲线",
   summary: "摘要",
   errors: "错误",
+  addMore: "添加更多...",
+  addTickersExample: "例如：AAPL, MSFT",
+  addStrategy: "添加策略",
+  selectPortfolio: "选择组合",
+  period6mo: "6 个月",
+  period1y: "1 年",
+  period2y: "2 年",
+  period5y: "5 年",
   
   // Status bar
   backendOnline: "后端在线",
@@ -124,13 +132,17 @@ export const zh = {
   // Visual Builder
   visualStrategyBuilder: "可视化策略构建器",
   saveStrategy: "保存策略",
+  buyWhen: "买入时机",
+  sellWhen: "卖出时机",
+  strategyDescription: "策略描述 (可选)",
   
   // Filter Builder
   filterBuilder: "过滤器构建器",
   filterName: "过滤器名称",
-  filterDescription: "过滤器描述",
+  filterDescription: "过滤器描述 (可选)",
   addCondition: "添加条件",
   saveFilter: "保存过滤器",
+
   
   // Language toggle
   language: "语言",

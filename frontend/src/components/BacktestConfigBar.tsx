@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { StrategyInfo, Portfolio } from "../types/stock";
+import type { StrategyInfo, Portfolio, ParamMeta } from "../types/stock";
 import type { Translation } from "../i18n";
 
 export const STRATEGY_COLORS = ["#2962FF", "#26A69A", "#EF5350", "#FF9800", "#AB47BC"];
@@ -28,6 +28,8 @@ interface BacktestConfigBarProps {
   onSourceModeChange: (mode: "manual" | "portfolio") => void;
   selectedPortfolioId: number | null;
   onPortfolioChange: (id: number | null) => void;
+  strategyParams: Record<string, Record<string, number>>;
+  onStrategyParamsChange: (name: string, params: Record<string, number>) => void;
   t: Translation;
 }
 
@@ -55,10 +57,13 @@ export default function BacktestConfigBar({
   onSourceModeChange,
   selectedPortfolioId,
   onPortfolioChange,
+  strategyParams,
+  onStrategyParamsChange,
   t,
 }: BacktestConfigBarProps) {
   const [symbolInput, setSymbolInput] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showParams, setShowParams] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +116,6 @@ export default function BacktestConfigBar({
 
   const handlePortfolioSelect = async (id: number) => {
     onPortfolioChange(id);
-    // Load portfolio symbols to populate the chip display
     try {
       const res = await fetch(`http://localhost:8000/api/portfolios/${id}`);
       const json = await res.json();
@@ -122,6 +126,13 @@ export default function BacktestConfigBar({
       /* silent */
     }
   };
+
+  // Strategies with param_meta that are currently selected
+  const strategiesWithParams = selectedStrategies
+    .map((name) => strategies.find((s) => s.name === name))
+    .filter((s): s is StrategyInfo => !!s && !!s.param_meta && Object.keys(s.param_meta).length > 0);
+
+  const hasParams = strategiesWithParams.length > 0;
 
   // Delete: only when exactly one non-builtin strategy is selected alone
   const deletableStrategy = selectedStrategies.length === 1
@@ -134,8 +145,29 @@ export default function BacktestConfigBar({
     selectedStrategies.length > 0 &&
     !loading;
 
+  const getParamValue = (stratName: string, param: string, meta: ParamMeta): number => {
+    return strategyParams[stratName]?.[param] ?? meta.default;
+  };
+
+  const handleParamChange = (stratName: string, param: string, value: number, meta: ParamMeta) => {
+    const clamped = Math.min(meta.max, Math.max(meta.min, value));
+    const current = strategyParams[stratName] ?? {};
+    onStrategyParamsChange(stratName, { ...current, [param]: clamped });
+  };
+
+  const resetStrategyParams = (stratName: string) => {
+    const strat = strategies.find((s) => s.name === stratName);
+    if (!strat?.param_meta) return;
+    const defaults: Record<string, number> = {};
+    for (const [p, meta] of Object.entries(strat.param_meta)) {
+      defaults[p] = meta.default;
+    }
+    onStrategyParamsChange(stratName, defaults);
+  };
+
   return (
     <div className="border-b border-tv-border bg-tv-base px-4 py-3 space-y-2">
+      {/* Main controls row */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* Manual / Portfolio Toggle */}
         <div className="flex bg-tv-panel rounded border border-tv-border overflow-hidden">
@@ -210,7 +242,6 @@ export default function BacktestConfigBar({
               className="bg-transparent text-tv-text text-xs outline-none flex-1 min-w-[100px] py-0.5"
             />
           </div>
-          {/* Autocomplete Dropdown */}
           {showDropdown && filteredSymbols.length > 0 && (
             <div
               ref={dropdownRef}
@@ -346,6 +377,27 @@ export default function BacktestConfigBar({
               </svg>
             </button>
           )}
+
+          {/* Parameters toggle — only when strategies with params are selected */}
+          {hasParams && (
+            <button
+              onClick={() => setShowParams((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded border transition cursor-pointer ${
+                showParams
+                  ? "bg-tv-blue/10 border-tv-blue text-tv-blue"
+                  : "border-tv-border text-tv-muted hover:text-tv-text hover:border-tv-text/50"
+              }`}
+              title={t.parameters}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              {t.parameters}
+              <svg className={`w-3 h-3 transition-transform ${showParams ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Run Button */}
@@ -371,6 +423,81 @@ export default function BacktestConfigBar({
           )}
         </button>
       </div>
+
+      {/* Parameter Panel */}
+      {showParams && hasParams && (
+        <div className="bg-tv-panel border border-tv-border rounded px-4 py-3">
+          <div className="flex flex-wrap gap-6">
+            {strategiesWithParams.map((strat, si) => {
+              const color = STRATEGY_COLORS[selectedStrategies.indexOf(strat.name) % STRATEGY_COLORS.length];
+              return (
+                <div key={strat.name} className="flex-1 min-w-[260px]">
+                  {/* Strategy label */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-[11px] font-semibold" style={{ color }}>{strat.name}</span>
+                    </div>
+                    <button
+                      onClick={() => resetStrategyParams(strat.name)}
+                      className="text-[10px] text-tv-muted hover:text-tv-text transition cursor-pointer"
+                      title={t.resetToDefaults}
+                    >
+                      {t.resetToDefaults}
+                    </button>
+                  </div>
+                  {/* Params */}
+                  <div className="space-y-2">
+                    {Object.entries(strat.param_meta!).map(([param, meta]) => {
+                      const val = getParamValue(strat.name, param, meta);
+                      const pct = meta.max > meta.min
+                        ? ((val - meta.min) / (meta.max - meta.min)) * 100
+                        : 50;
+                      return (
+                        <div key={param} className="flex items-center gap-2">
+                          <label className="text-[11px] text-tv-muted w-28 shrink-0 truncate" title={meta.label}>
+                            {meta.label}
+                          </label>
+                          <div className="relative flex-1 h-4 flex items-center">
+                            <div className="absolute inset-x-0 h-1 bg-tv-border rounded-full" />
+                            <div
+                              className="absolute left-0 h-1 rounded-full"
+                              style={{ width: `${pct}%`, backgroundColor: color + "80" }}
+                            />
+                            <input
+                              type="range"
+                              min={meta.min}
+                              max={meta.max}
+                              step={meta.step}
+                              value={val}
+                              onChange={(e) => handleParamChange(strat.name, param, Number(e.target.value), meta)}
+                              className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
+                              style={{ zIndex: 1 }}
+                            />
+                            <div
+                              className="absolute w-3 h-3 rounded-full border-2 border-white shadow"
+                              style={{ left: `calc(${pct}% - 6px)`, backgroundColor: color }}
+                            />
+                          </div>
+                          <input
+                            type="number"
+                            min={meta.min}
+                            max={meta.max}
+                            step={meta.step}
+                            value={val}
+                            onChange={(e) => handleParamChange(strat.name, param, Number(e.target.value), meta)}
+                            className="bg-tv-base text-tv-text text-[11px] border border-tv-border rounded px-1.5 py-0.5 w-16 font-mono outline-none focus:border-tv-blue text-right"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

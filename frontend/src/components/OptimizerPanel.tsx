@@ -17,6 +17,7 @@ interface OptimizerPanelProps {
   strategies: StrategyInfo[];
   availableSymbols: string[];
   realtime: boolean;
+  onApplyParams: (strategyName: string, params: Record<string, number>) => void;
   t: Translation;
 }
 
@@ -58,7 +59,7 @@ function formatPct(v: number | undefined): string {
   return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 
-export default function OptimizerPanel({ strategies, availableSymbols, realtime, t }: OptimizerPanelProps) {
+export default function OptimizerPanel({ strategies, availableSymbols, realtime, onApplyParams, t }: OptimizerPanelProps) {
   const [selectedStrategy, setSelectedStrategy] = useState("");
   const [symbol, setSymbol] = useState("");
   const [period, setPeriod] = useState("1y");
@@ -71,11 +72,14 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
   const [error, setError] = useState("");
   const [sortKey, setSortKey] = useState<keyof OptimizeResult>("total_return_pct");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const handleStrategyChange = (name: string) => {
     setSelectedStrategy(name);
     setResult(null);
     setError("");
+    setSelectedRowIndex(null);
     const strat = strategies.find((s) => s.name === name);
     if (strat?.param_meta && Object.keys(strat.param_meta).length > 0) {
       setSweeps(
@@ -114,6 +118,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
     setLoading(true);
     setError("");
     setResult(null);
+    setSelectedRowIndex(null);
 
     try {
       const payload: Record<string, unknown> = {
@@ -157,6 +162,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
       setSortKey(key);
       setSortDir("desc");
     }
+    setSelectedRowIndex(null);
   };
 
   const sortedResults = result
@@ -177,6 +183,49 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
     );
 
   const selectedStrategyInfo = strategies.find((s) => s.name === selectedStrategy);
+
+  const selectedRow = selectedRowIndex !== null ? sortedResults[selectedRowIndex] : null;
+
+  const handleApplyToBacktest = () => {
+    if (!selectedRow || !selectedStrategy) return;
+    onApplyParams(selectedStrategy, selectedRow.params);
+  };
+
+  const handleSetAsDefault = async () => {
+    if (!selectedRow || !selectedStrategy) return;
+    setSaveStatus("saving");
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/strategies/${encodeURIComponent(selectedStrategy)}/params`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params: selectedRow.params }),
+        }
+      );
+      const json = await res.json();
+      if (json.success) {
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2500);
+      } else {
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus("idle"), 2500);
+      }
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 2500);
+    }
+  };
+
+  const formatParamSummary = (params: Record<string, number>): string => {
+    return Object.entries(params)
+      .map(([k, v]) => {
+        const meta = selectedStrategyInfo?.param_meta?.[k];
+        const label = meta?.label || k;
+        return `${label}: ${v}`;
+      })
+      .join(" · ");
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -338,7 +387,6 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
                         placeholder={t.step}
                         className="bg-tv-base text-tv-text text-xs border border-tv-border rounded px-2 py-1 outline-none focus:border-tv-blue w-14"
                       />
-                      {/* Live count for this row */}
                       {row.param && (
                         <span className="text-[10px] text-tv-muted">
                           ({rangeToValues(parseFloat(row.min), parseFloat(row.max), parseFloat(row.step)).length} vals)
@@ -435,19 +483,64 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
 
         {!loading && result && sortedResults.length > 0 && (
           <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
+            {/* Results header */}
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div>
                 <span className="text-tv-text font-semibold text-sm">{result.symbol}</span>
                 <span className="text-tv-muted text-xs ml-2">· {result.strategy_name}</span>
                 <span className="text-tv-muted text-xs ml-2">· {result.combinations_tested} combinations tested</span>
                 <span className="text-tv-muted text-xs ml-2">· {result.date_range.start} → {result.date_range.end}</span>
               </div>
+
+              {/* Action bar — shown when a row is selected */}
+              {selectedRow && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-tv-muted truncate max-w-[260px]" title={formatParamSummary(selectedRow.params)}>
+                    {formatParamSummary(selectedRow.params)}
+                  </span>
+                  <button
+                    onClick={handleApplyToBacktest}
+                    className="flex items-center gap-1.5 text-xs bg-tv-blue hover:bg-blue-600 text-white px-3 py-1 rounded transition cursor-pointer"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                    {t.applyToBacktest}
+                  </button>
+                  <button
+                    onClick={handleSetAsDefault}
+                    disabled={saveStatus === "saving"}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded border transition cursor-pointer ${
+                      saveStatus === "saved"
+                        ? "bg-tv-green/10 border-tv-green text-tv-green"
+                        : saveStatus === "error"
+                        ? "bg-tv-red/10 border-tv-red/40 text-tv-red"
+                        : "border-tv-border text-tv-muted hover:text-tv-text hover:border-tv-text/50"
+                    }`}
+                  >
+                    {saveStatus === "saving" ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    ) : saveStatus === "saved" ? (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                      </svg>
+                    )}
+                    {saveStatus === "saved" ? t.paramsSaved : saveStatus === "error" ? "Error" : t.setAsDefault}
+                  </button>
+                </div>
+              )}
             </div>
 
             <table className="w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 bg-tv-base z-10 text-tv-muted uppercase font-medium">
                 <tr className="border-b border-tv-border">
-                  <th className="px-3 py-2 border-r border-tv-border/30">{t.rank}</th>
+                  <th className="px-3 py-2 border-r border-tv-border/30 w-8">{t.rank}</th>
                   {/* Dynamic param columns */}
                   {sweeps.filter((s) => s.param.trim()).map((s) => {
                     const meta = selectedStrategyInfo?.param_meta?.[s.param];
@@ -461,7 +554,7 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
                     onClick={() => toggleSort("total_return_pct")}
                   >
-                    {t.return} <SortIcon col="total_return_pct" />
+                    Return% <SortIcon col="total_return_pct" />
                   </th>
                   <th
                     className="px-3 py-2 border-r border-tv-border/30 cursor-pointer hover:text-tv-text select-none"
@@ -492,13 +585,23 @@ export default function OptimizerPanel({ strategies, availableSymbols, realtime,
               <tbody className="text-tv-text divide-y divide-tv-border">
                 {sortedResults.map((row, i) => {
                   const isBest = row.total_return_pct === bestReturn && i === 0;
+                  const isSelected = selectedRowIndex === i;
                   return (
                     <tr
                       key={i}
-                      className={`${isBest ? "bg-tv-green/5 border-l-2 border-l-tv-green" : "hover:bg-tv-panel"} transition`}
+                      onClick={() => setSelectedRowIndex(isSelected ? null : i)}
+                      className={`transition cursor-pointer ${
+                        isSelected
+                          ? "bg-tv-blue/10 border-l-2 border-l-tv-blue"
+                          : isBest
+                          ? "bg-tv-green/5 border-l-2 border-l-tv-green hover:bg-tv-green/10"
+                          : "hover:bg-tv-panel border-l-2 border-l-transparent"
+                      }`}
                     >
                       <td className="px-3 py-2 text-tv-muted">
-                        {isBest ? (
+                        {isSelected ? (
+                          <span className="text-tv-blue font-bold">●</span>
+                        ) : isBest ? (
                           <span className="text-tv-green font-bold">{t.bestResult}</span>
                         ) : (
                           i + 1

@@ -92,6 +92,8 @@ def ensure_history(symbol: str, start_date: str, end_date: str):
         try:
             if data_source == "tushare":
                 rows = _fetch_tushare_history(symbol, seg_start, seg_end)
+            elif data_source == "binance":
+                rows = _fetch_binance_history(symbol, seg_start, seg_end)
             else:
                 rows = _fetch_yfinance_history(symbol, start_date=seg_start, end_date=seg_end)
             if rows:
@@ -107,6 +109,8 @@ class SettingsUpdateRequest(BaseModel):
     global_start_date: Optional[str] = None
     global_end_date: Optional[str] = None
     tushare_api_key: Optional[str] = None
+    binance_api_key: Optional[str] = None
+    binance_api_secret: Optional[str] = None
 
 
 class CreatePortfolioRequest(BaseModel):
@@ -152,6 +156,8 @@ async def get_settings():
         "global_start_date": settings.get("global_start_date", ""),
         "global_end_date": settings.get("global_end_date", ""),
         "tushare_api_key": settings.get("tushare_api_key"),
+        "binance_api_key": settings.get("binance_api_key", ""),
+        "binance_api_secret": settings.get("binance_api_secret", ""),
     }
 
 
@@ -165,6 +171,10 @@ async def update_settings(body: SettingsUpdateRequest):
         stock_db.set_setting("global_end_date", body.global_end_date)
     if body.tushare_api_key is not None:
         stock_db.set_setting("tushare_api_key", body.tushare_api_key)
+    if body.binance_api_key is not None:
+        stock_db.set_setting("binance_api_key", body.binance_api_key)
+    if body.binance_api_secret is not None:
+        stock_db.set_setting("binance_api_secret", body.binance_api_secret)
     settings = stock_db.get_all_settings()
     return {
         "success": True,
@@ -172,6 +182,8 @@ async def update_settings(body: SettingsUpdateRequest):
         "global_start_date": settings.get("global_start_date", ""),
         "global_end_date": settings.get("global_end_date", ""),
         "tushare_api_key": settings.get("tushare_api_key"),
+        "binance_api_key": settings.get("binance_api_key", ""),
+        "binance_api_secret": settings.get("binance_api_secret", ""),
     }
 
 
@@ -324,7 +336,42 @@ async def fetch_data(body: Optional[FetchRequest] = None):
             except Exception as e:
                 print(f"Tushare fetch failed: {e}")
                 return {"success": False, "error": f"Tushare API error: {str(e)}"}
-                
+
+        elif data_source == "binance":
+            for sym in symbols:
+                try:
+                    start_date, end_date = resolve_date_range(None, None, "1y")
+                    ensure_history(sym, start_date, end_date)
+
+                    # Use 24hr ticker for current price, OHLCV, and change %
+                    ticker = _get_binance_24hr_ticker(sym)
+                    if ticker is None:
+                        errors.append(f"{sym}: failed to get ticker data from Binance")
+                        continue
+
+                    close_val = float(ticker.get("lastPrice") or 0)
+                    open_val = float(ticker.get("openPrice") or 0)
+                    high_val = float(ticker.get("highPrice") or 0)
+                    low_val = float(ticker.get("lowPrice") or 0)
+                    volume_val = int(float(ticker.get("volume") or 0))
+                    change_pct = round(float(ticker.get("priceChangePercent") or 0), 2)
+
+                    stock_db.save_stock_data(
+                        symbol=sym,
+                        name=sym,
+                        price=close_val,
+                        volume=volume_val,
+                        change_percent=change_pct,
+                        open_price=open_val,
+                        high_price=high_val,
+                        low_price=low_val,
+                        close_price=close_val,
+                        last_fetched=fetch_time,
+                    )
+                    fetched_count += 1
+                except Exception as e:
+                    errors.append(f"{sym}: {str(e)}")
+
         else:
             # Default to yfinance
             import yfinance as yf
@@ -689,6 +736,135 @@ def _fetch_tushare_income(symbol: str, start_date: str, end_date: str) -> list[d
     except Exception as e:
         print(f"Tushare income fetch failed for {symbol}: {e}")
         return None
+
+
+# ── Binance helpers ──
+
+CRYPTO_QUOTE_ASSETS = ["USDT", "BUSD", "USDC", "BTC", "ETH", "BNB", "FDUSD", "TUSD"]
+
+
+def _is_crypto_symbol(symbol: str) -> bool:
+    """Return True if symbol looks like a Binance crypto trading pair (e.g. BTCUSDT)."""
+    s = symbol.upper()
+    return s.isalpha() and any(s.endswith(q) for q in CRYPTO_QUOTE_ASSETS)
+
+
+def _fetch_binance_history(symbol: str, start_date: str | None = None,
+                            end_date: str | None = None) -> list[dict] | None:
+    """Download daily OHLC history from Binance public K-line API. No API key required.
+    Returns list of dicts with date, open, high, low, close, volume. Returns None on failure."""
+    try:
+        import requests
+
+        symbol_upper = symbol.upper()
+        base_url = "https://api.binance.com/api/v3/klines"
+
+        def _date_to_ms(d: str) -> int:
+            return int(datetime.strptime(d, "%Y-%m-%d").timestamp() * 1000)
+
+        start_ms = _date_to_ms(start_date) if start_date else None
+        end_ms = _date_to_ms(end_date) if end_date else int(datetime.now().timestamp() * 1000)
+
+        all_rows: list[dict] = []
+
+        while True:
+            params: dict = {"symbol": symbol_upper, "interval": "1d", "limit": 1000}
+            if start_ms:
+                params["startTime"] = start_ms
+            if end_ms:
+                params["endTime"] = end_ms
+
+            resp = requests.get(base_url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not data:
+                break
+
+            for kline in data:
+                open_time_ms = kline[0]
+                date_str = datetime.utcfromtimestamp(open_time_ms / 1000).strftime("%Y-%m-%d")
+                all_rows.append({
+                    "date": date_str,
+                    "open": float(kline[1]),
+                    "high": float(kline[2]),
+                    "low": float(kline[3]),
+                    "close": float(kline[4]),
+                    "volume": int(float(kline[5])),
+                })
+
+            if len(data) < 1000:
+                break
+
+            # Advance past the last candle's open time
+            start_ms = data[-1][0] + 1
+
+        return all_rows if all_rows else None
+    except Exception as e:
+        print(f"Binance history fetch failed for {symbol}: {e}")
+        return None
+
+
+def _get_binance_24hr_ticker(symbol: str) -> dict | None:
+    """Fetch 24hr rolling window stats from Binance. Returns dict with price, change%, OHLCV."""
+    try:
+        import requests
+        resp = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={"symbol": symbol.upper()},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Binance 24hr ticker failed for {symbol}: {e}")
+        return None
+
+
+def _validate_binance_keys(api_key: str, api_secret: str) -> dict:
+    """Test Binance API connectivity and key validity.
+    Returns dict with success, message, authenticated."""
+    try:
+        import requests
+
+        if not api_key:
+            # Public connectivity check only
+            resp = requests.get("https://api.binance.com/api/v3/ping", timeout=5)
+            resp.raise_for_status()
+            return {
+                "success": True,
+                "message": "Binance API is reachable. No API key configured.",
+                "authenticated": False,
+            }
+
+        # Signed account endpoint requires HMAC-SHA256 signature
+        import hmac
+        import hashlib
+        import time
+
+        ts = int(time.time() * 1000)
+        query = f"timestamp={ts}"
+        sig = hmac.new(api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
+        headers = {"X-MBX-APIKEY": api_key}
+        resp = requests.get(
+            f"https://api.binance.com/api/v3/account?{query}&signature={sig}",
+            headers=headers,
+            timeout=8,
+        )
+
+        if resp.status_code == 200:
+            return {"success": True, "message": "API key is valid with read access.", "authenticated": True}
+        elif resp.status_code == 401:
+            return {"success": False, "message": "Invalid API key or secret.", "authenticated": False}
+        elif resp.status_code == 403:
+            return {"success": False, "message": "API key lacks required permissions.", "authenticated": False}
+        else:
+            msg = resp.json().get("msg", f"HTTP {resp.status_code}")
+            return {"success": False, "message": msg, "authenticated": False}
+
+    except Exception as e:
+        return {"success": False, "message": str(e), "authenticated": False}
 
 
 def _enrich_statements(rows: list[dict]) -> list[dict]:
@@ -1548,6 +1724,46 @@ async def save_strategy(body: SaveStrategyRequest):
         return {"success": True, "name": strat.name}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ── Binance API endpoints ──
+
+@app.post("/api/binance/validate")
+async def validate_binance():
+    """Test Binance API connectivity and validate stored API key credentials."""
+    api_key = stock_db.get_setting("binance_api_key") or ""
+    api_secret = stock_db.get_setting("binance_api_secret") or ""
+    result = _validate_binance_keys(api_key, api_secret)
+    return result
+
+
+@app.get("/api/binance/symbols")
+async def list_binance_symbols(q: Optional[str] = None):
+    """Return Binance spot trading pairs, optionally filtered by query string."""
+    try:
+        import requests
+        resp = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        symbols = [
+            s["symbol"]
+            for s in data.get("symbols", [])
+            if s.get("status") == "TRADING" and s.get("isSpotTradingAllowed")
+        ]
+
+        if q:
+            q_upper = q.upper()
+            symbols = [s for s in symbols if q_upper in s]
+
+        # Common USDT pairs first for better UX
+        usdt = [s for s in symbols if s.endswith("USDT")]
+        other = [s for s in symbols if not s.endswith("USDT")]
+        ordered = usdt + other
+
+        return {"success": True, "symbols": ordered[:200], "total": len(symbols)}
+    except Exception as e:
+        return {"success": False, "symbols": [], "error": str(e)}
 
 
 if __name__ == "__main__":

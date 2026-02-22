@@ -6,12 +6,14 @@ from .base import BaseStrategy
 from .golden_cross import GoldenCrossStrategy
 from .rsi_mean_reversion import RSIMeanReversionStrategy
 from .price_change_momentum import PriceChangeMomentumStrategy
+from .usdt_peg_strategy import USDTPEGStrategy
 
 
 BUILTIN_CLASSES: dict[str, type] = {
     "Golden Cross": GoldenCrossStrategy,
     "RSI Mean Reversion": RSIMeanReversionStrategy,
     "Price Change Momentum": PriceChangeMomentumStrategy,
+    "USDT Peg Strategy": USDTPEGStrategy,
 }
 
 
@@ -21,7 +23,7 @@ class StrategyLoader:
         self._register_builtins()
 
     def _register_builtins(self) -> None:
-        for cls in [GoldenCrossStrategy, RSIMeanReversionStrategy, PriceChangeMomentumStrategy]:
+        for cls in [GoldenCrossStrategy, RSIMeanReversionStrategy, PriceChangeMomentumStrategy, USDTPEGStrategy]:
             instance = cls()
             self._strategies[instance.name] = instance
 
@@ -51,7 +53,7 @@ class StrategyLoader:
 
     def list_all(self) -> list[dict]:
         result = []
-        builtin_names = {"Golden Cross", "RSI Mean Reversion", "Price Change Momentum"}
+        builtin_names = {"Golden Cross", "RSI Mean Reversion", "Price Change Momentum", "USDT Peg Strategy"}
         for name, s in self._strategies.items():
             result.append({
                 "name": s.name,

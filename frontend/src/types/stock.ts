@@ -89,6 +89,7 @@ export interface StrategyInfo {
   parameters: Record<string, unknown>;
   param_meta?: Record<string, ParamMeta>;
   builtin: boolean;
+  saved_params?: Record<string, number>;
 }
 
 export interface TradeEntry {

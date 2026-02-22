@@ -170,6 +170,14 @@ export const en = {
   english: "English",
   chinese: "中文",
   
+  // Parameter panel
+  parameters: "Parameters",
+  resetToDefaults: "Reset",
+  applyToBacktest: "Apply to Backtest",
+  setAsDefault: "Set as Default",
+  paramsSaved: "Saved!",
+  paramsApplied: "Applied",
+
   // Optimizer Panel
   selectStrategy: "Select strategy…",
   symbolExample: "e.g. AAPL",

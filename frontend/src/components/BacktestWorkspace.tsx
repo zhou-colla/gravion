@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type {
   StrategyInfo,
   BatchBacktestResponse,
@@ -50,6 +50,38 @@ export default function BacktestWorkspace({
   const [sourceMode, setSourceMode] = useState<"manual" | "portfolio">("manual");
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"backtest" | "optimizer">("backtest");
+  const [strategyParams, setStrategyParams] = useState<Record<string, Record<string, number>>>({});
+
+  // Initialize params when a new strategy is added — use saved_params if present, else param_meta defaults
+  useEffect(() => {
+    const updates: Record<string, Record<string, number>> = {};
+    for (const name of selectedStrategies) {
+      if (!strategyParams[name]) {
+        const strat = strategies.find((s) => s.name === name);
+        if (strat?.param_meta && Object.keys(strat.param_meta).length > 0) {
+          const init: Record<string, number> = {};
+          for (const [p, meta] of Object.entries(strat.param_meta)) {
+            init[p] = strat.saved_params?.[p] ?? meta.default;
+          }
+          updates[name] = init;
+        }
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      setStrategyParams((prev) => ({ ...prev, ...updates }));
+    }
+  }, [selectedStrategies, strategies]);
+
+  const handleStrategyParamsChange = (name: string, params: Record<string, number>) => {
+    setStrategyParams((prev) => ({ ...prev, [name]: params }));
+  };
+
+  // Called from OptimizerPanel — switch to backtest tab and apply selected params
+  const handleApplyOptimizerParams = (name: string, params: Record<string, number>) => {
+    setStrategyParams((prev) => ({ ...prev, [name]: params }));
+    setSelectedStrategies((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setActiveTab("backtest");
+  };
 
   const computeEquityCurve = (results: BatchBacktestResult[], capitalPerStock: number): EquityCurvePoint[] => {
     const events: { time: string; pnl: number }[] = [];
@@ -96,10 +128,19 @@ export default function BacktestWorkspace({
 
       const runs = await Promise.all(
         selectedStrategies.map(async (strategyName, i) => {
+          const params = strategyParams[strategyName];
+          const payload: Record<string, unknown> = {
+            ...basePayload,
+            strategy_name: strategyName,
+          };
+          // Only send params if they differ from defaults (or always send them)
+          if (params && Object.keys(params).length > 0) {
+            payload.params = params;
+          }
           const res = await fetch("http://localhost:8000/api/backtest/batch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...basePayload, strategy_name: strategyName }),
+            body: JSON.stringify(payload),
           });
           const json: BatchBacktestResponse = await res.json();
           return {
@@ -181,7 +222,13 @@ export default function BacktestWorkspace({
       </div>
 
       {activeTab === "optimizer" ? (
-        <OptimizerPanel strategies={strategies} availableSymbols={availableSymbols} realtime={realtime} t={t} />
+        <OptimizerPanel
+          strategies={strategies}
+          availableSymbols={availableSymbols}
+          realtime={realtime}
+          onApplyParams={handleApplyOptimizerParams}
+          t={t}
+        />
       ) : (
         <>
           {/* Config Bar */}
@@ -209,6 +256,8 @@ export default function BacktestWorkspace({
             onSourceModeChange={setSourceMode}
             selectedPortfolioId={selectedPortfolioId}
             onPortfolioChange={setSelectedPortfolioId}
+            strategyParams={strategyParams}
+            onStrategyParamsChange={handleStrategyParamsChange}
             t={t}
           />
 

@@ -145,6 +145,8 @@ class StockDatabase:
                 ("data_source", "yahoo_finance"),
                 ("global_start_date", ""),
                 ("global_end_date", ""),
+                ("binance_api_key", ""),
+                ("binance_api_secret", ""),
             ]:
                 cursor.execute(
                     "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",

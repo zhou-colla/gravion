@@ -1407,10 +1407,15 @@ class BatchBacktestRequest(BaseModel):
     period: str | None = None
     initial_capital_per_stock: float = 10000
     realtime: bool = False  # False = cache-first (no yfinance calls)
+    params: Optional[dict] = None  # Custom parameter overrides
 
 
 class SaveStrategyRequest(BaseModel):
     definition: dict
+
+
+class StrategyParamsRequest(BaseModel):
+    params: dict
 
 
 BUILTIN_STRATEGY_NAMES = {"Golden Cross", "RSI Mean Reversion", "Price Change Momentum"}
@@ -1418,8 +1423,18 @@ BUILTIN_STRATEGY_NAMES = {"Golden Cross", "RSI Mean Reversion", "Price Change Mo
 
 @app.get("/api/strategies")
 async def list_strategies():
-    """Returns all registered strategies (built-in + user)."""
-    return {"strategies": strategy_loader.list_all()}
+    """Returns all registered strategies (built-in + user), with any saved custom params."""
+    import json as _json
+    strategies = strategy_loader.list_all()
+    for s in strategies:
+        key = f"strategy_params_{s['name']}"
+        saved = stock_db.get_setting(key)
+        if saved:
+            try:
+                s["saved_params"] = _json.loads(saved)
+            except Exception:
+                pass
+    return {"strategies": strategies}
 
 
 @app.delete("/api/strategies/{name}")
@@ -1551,7 +1566,10 @@ async def batch_backtest(body: BatchBacktestRequest):
     try:
         # Resolve strategy
         if body.strategy_name:
-            strategy = strategy_loader.get(body.strategy_name)
+            if body.params:
+                strategy = strategy_loader.instantiate_with_params(body.strategy_name, body.params)
+            else:
+                strategy = strategy_loader.get(body.strategy_name)
             if not strategy:
                 return {"success": False, "error": f"Strategy '{body.strategy_name}' not found"}
         elif body.strategy_json:
@@ -1724,6 +1742,25 @@ async def save_strategy(body: SaveStrategyRequest):
         return {"success": True, "name": strat.name}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.put("/api/strategies/{strategy_name}/params")
+async def save_strategy_params(strategy_name: str, body: StrategyParamsRequest):
+    """Persist custom default parameters for a strategy (stored in app_settings)."""
+    import json as _json
+    if not strategy_loader.get(strategy_name):
+        return {"success": False, "error": f"Strategy '{strategy_name}' not found"}
+    key = f"strategy_params_{strategy_name}"
+    stock_db.set_setting(key, _json.dumps(body.params))
+    return {"success": True, "strategy_name": strategy_name, "params": body.params}
+
+
+@app.delete("/api/strategies/{strategy_name}/params")
+async def delete_strategy_params(strategy_name: str):
+    """Remove any saved custom parameters for a strategy (revert to defaults)."""
+    key = f"strategy_params_{strategy_name}"
+    stock_db.set_setting(key, "")
+    return {"success": True}
 
 
 # ── Binance API endpoints ──

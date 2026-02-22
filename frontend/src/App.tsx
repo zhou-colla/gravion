@@ -64,7 +64,7 @@ export default function App() {
 
   // Phase 5 state
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [settings, setSettings] = useState<AppSettings & { tushare_api_key?: string }>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "", tushare_api_key: undefined });
+  const [settings, setSettings] = useState<AppSettings & { tushare_api_key?: string; binance_api_key?: string; binance_api_secret?: string }>({ data_source: "yahoo_finance", global_start_date: "", global_end_date: "", tushare_api_key: undefined, binance_api_key: "", binance_api_secret: "" });
   const [scannerSource, setScannerSource] = useState<SourceSelection>({ type: "portfolio", portfolioId: 0, portfolioName: "NASDAQ 100" });
   const [scannerStrategies, setScannerStrategies] = useState<string[]>([]);
   const [comparisonStrategies, setComparisonStrategies] = useState<string[]>([]);
@@ -134,6 +134,8 @@ export default function App() {
         global_start_date: json.global_start_date || "",
         global_end_date: json.global_end_date || "",
         tushare_api_key: json.tushare_api_key,
+        binance_api_key: json.binance_api_key || "",
+        binance_api_secret: json.binance_api_secret || "",
       });
     } catch {
       /* silent */

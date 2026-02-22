@@ -176,6 +176,14 @@ export const zh = {
   chinese: "中文",
   
   // Optimizer Panel
+  // Parameter panel
+  parameters: "参数",
+  resetToDefaults: "重置",
+  applyToBacktest: "应用到回测",
+  setAsDefault: "设为默认",
+  paramsSaved: "已保存!",
+  paramsApplied: "已应用",
+
   selectStrategy: "选择策略…",
   symbolExample: "例如：AAPL",
   timeframe: "时间范围",
